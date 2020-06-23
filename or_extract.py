@@ -165,7 +165,38 @@ def read_change(changefile):
             except:
                 break
         #print(data_row)
+    elif command_name == "com.google.refine.model.changes.ColumnAdditionChange":
+        line = next(changefile).replace("\n","")
+        print(line)
+        while line:
+            if line=="/ec/":
+                break
+            else:
+                head = line.split("=")[0]
+                val = line.split("=")[-1]
+                header_dict[head] = val
+                rows = {}
+                #print(head)
+                if head == "newCellCount":
+                    for x in range(int(val)):
+                        line = next(changefile).replace("\n","").split(";")
+                        val = json.loads(line[1])
+                        row = int(line[0])
+                        rows[row] = val
+                    header_dict["val"] = rows
+            try:
+                line=next(changefile).replace("\n","")
+            except:
+                break        
     return version,command_name,header_dict,data_row
+
+def search_cell_column(col_mds,cell_index):
+    for i,col in enumerate(col_mds):
+        if col["cellIndex"] == cell_index:
+            return i,col
+
+    return -1, None
+
 
 if __name__ == "__main__":
     # extract project
@@ -184,21 +215,46 @@ if __name__ == "__main__":
             locexzip,_ = open_change(hist_dir,change,target_folder=hist_dir)
             # read change
             changes = read_change(locexzip+"/change.txt")
-            for ch in changes[3]:
-                #print(ch)
-                try:
-                    r = int(ch["row"])
-                except BaseException as ex:
-                    print(ex)
-                    continue
-                c = int(ch["cell"])
-                nv = json.loads(ch["new"])
-                ov = json.loads(ch["old"])
-                #print(dataset[2]["rows"][r])            
-                #print(dataset[2]["rows"][r]["cells"][c],ch)
-                #print(dataset[2]["rows"][r]["cells"][c],nv)
-                if dataset[2]["rows"][r]["cells"][c] == nv:
-                    dataset[2]["rows"][r]["cells"][c] = ov
-                    print(dataset[2]["rows"][r]["cells"][c],ch)
+            if changes[1] == "com.google.refine.model.changes.MassCellChange":
+                for ch in changes[3]:
+                    #print(ch)
+                    try:
+                        r = int(ch["row"])
+                    except BaseException as ex:
+                        print(ex)
+                        continue
+                    c = int(ch["cell"])
+                    nv = json.loads(ch["new"])
+                    ov = json.loads(ch["old"])
+                    #print(dataset[2]["rows"][r])            
+                    #print(dataset[2]["rows"][r]["cells"][c],ch)
+                    #print(dataset[2]["rows"][r]["cells"][c],nv)
+                    if dataset[2]["rows"][r]["cells"][c] == nv:
+                        dataset[2]["rows"][r]["cells"][c] = ov
+                        print(dataset[2]["rows"][r]["cells"][c],ch)
+            elif changes[1] == "com.google.refine.model.changes.ColumnAdditionChange":
+                #print(changes[2])
+                new_cell_index = int(changes[2]["newCellIndex"])
+                #print(dataset[0])
+                # remove cell_index from coll definition
+                c_idx, col = search_cell_column(dataset[0]["cols"],new_cell_index)
+                #dataset[0]["cols"].pop(new_cell_index)
+                
+                # remove column
+                if col["name"] == changes[2]["columnName"]:
+                    dataset[0]["cols"].pop(c_idx)
+                #print(c_idx,col)
+                #print(dataset[0]["cols"])
+
+                # remove data                                
+                for r in dataset[2]["rows"]:
+                    r["cells"].pop(c_idx)
+                    
+                #print(dataset[2]["rows"])
+
+                #for r in dataset[2]["rows"]
+            else:
+                print(changes)
+                break
         #break
     pass
