@@ -27,7 +27,7 @@ def read_dataset(project_file):
     zipdoc.extractall(path=locex)
     zipdoc.close()
 
-    datafile = open(locex+"/data.txt","r")
+    datafile = open(locex+"/data.txt","r",encoding="UTF-8")
     
     # read column model
     column_model_dict = {}
@@ -134,7 +134,7 @@ oldColumnGroupCount=0
 
 
 def read_change(changefile):
-    changefile = open(changefile,"r")
+    changefile = open(changefile,"r",encoding="UTF-8")
     # read version
     version = next(changefile).replace("\n","")
     # read command_name
@@ -158,7 +158,12 @@ def read_change(changefile):
                 #break
             else:
                 head = line.split("=")[0]
-                val = line.split("=")[-1]
+                val = None
+                try:
+                    val = "=".join(line.split("=")[1:])
+                except:
+                    pass
+
                 data_dict[head] = val
             try:
                 line=next(changefile).replace("\n","")
@@ -167,32 +172,130 @@ def read_change(changefile):
         #print(data_row)
     elif command_name == "com.google.refine.model.changes.ColumnAdditionChange":
         line = next(changefile).replace("\n","")
-        print(line)
+        #print(line)
         while line:
             if line=="/ec/":
                 break
             else:
                 head = line.split("=")[0]
-                val = line.split("=")[-1]
+                val = None
+                try:
+                    val = "=".join(line.split("=")[1:])
+                except:
+                    pass
                 header_dict[head] = val
                 rows = {}
                 #print(head)
                 if head == "newCellCount":
                     for x in range(int(val)):
                         line = next(changefile).replace("\n","").split(";")
-                        val = json.loads(line[1])
+                        val = None
+                        try:
+                            val = json.loads(line[1])
+                        except:
+                            pass
                         row = int(line[0])
                         rows[row] = val
                     header_dict["val"] = rows
             try:
                 line=next(changefile).replace("\n","")
             except:
-                break        
+                break
+    elif command_name == "com.google.refine.model.changes.ColumnRemovalChange" :
+        line = next(changefile).replace("\n","")
+        #print(line)
+        while line:
+            if line=="/ec/":
+                break
+            else:
+                head = line.split("=")[0]
+                val = None
+                try:
+                    val = "=".join(line.split("=")[1:])
+                except:
+                    pass
+                header_dict[head] = val
+                rows = {}
+                #print(head)
+                if head == "oldCellCount":
+                    for x in range(int(val)):
+                        line = next(changefile).replace("\n","").split(";")
+                        val = None
+                        try:
+                            val = json.loads(line[1])
+                        except:
+                            pass
+                        row = int(line[0])
+                        rows[row] = val
+                    header_dict["val"] = rows
+            try:
+                line=next(changefile).replace("\n","")
+            except:
+                break   
+    elif command_name == "com.google.refine.model.changes.ColumnSplitChange" :
+        line = next(changefile).replace("\n","")
+        print(line)
+        while line:
+            if line=="/ec/":
+                break
+            else:
+                head = line.split("=")[0]
+                val = None
+                try:
+                    val = "=".join(line.split("=")[1:])
+                except:
+                    pass
+                header_dict[head] = val
+                #print(head)
+                # read new column name
+                new_columns = []
+                if head == "columnNameCount":                    
+                    for x in range(int(val)):
+                        line = next(changefile).replace("\n","")
+                        new_columns.append(line)
+                    header_dict["new_columns"] = new_columns
+
+                # read new cells
+                new_cells = {}
+                new_rows = {}
+                if head == "rowIndexCount":
+                    for x in range(int(val)):
+                        line = next(changefile).replace("\n","")
+                        index = int(line)
+                        new_cells[index] = [None for i in range(int(header_dict["columnNameCount"]))]
+                        new_rows[index] = None
+                if head == "tupleCount":
+                    for x in range(int(val)):
+                        line = next(changefile).replace("\n","")
+                        for y in range(int(line)):
+                            line = next(changefile).replace("\n","")
+                            new_cells[y] = line
+                    header_dict["new_cells"] = new_cells
+
+                # read new rows values
+                if head == "newRowCount":
+                    for x in new_rows.keys():
+                        line = next(changefile).replace("\n","")
+                        new_rows[x] = json.loads(line)
+                    header_dict["new_rows"] = new_rows
+
+            try:
+                line=next(changefile).replace("\n","")
+            except:
+                break 
+
     return version,command_name,header_dict,data_row
 
 def search_cell_column(col_mds,cell_index):
     for i,col in enumerate(col_mds):
         if col["cellIndex"] == cell_index:
+            return i,col
+
+    return -1, None
+
+def search_cell_column_byname(col_mds,name):
+    for i,col in enumerate(col_mds):
+        if col["originalName"] == name:
             return i,col
 
     return -1, None
@@ -206,11 +309,15 @@ if __name__ == "__main__":
     dataset = read_dataset(locex)
     # print(dataset)
     
+    #print([str(x["id"])+".change.zip" for x in dataset[1]["hists"][::-1]])
+    #exit()
+
     # read history file
     hist_dir = locex+"/history/"
     list_dir = os.listdir(hist_dir)
-    for change in sorted(list_dir)[::-1]:
-        # print(change)
+    #for change in sorted(list_dir)[::-1]:
+    for change in [str(x["id"])+".change.zip" for x in dataset[1]["hists"][::-1]]:
+        print(change)
         if change.endswith(".zip"):
             locexzip,_ = open_change(hist_dir,change,target_folder=hist_dir)
             # read change
@@ -223,6 +330,7 @@ if __name__ == "__main__":
                     except BaseException as ex:
                         print(ex)
                         continue
+                    print(ch)
                     c = int(ch["cell"])
                     nv = json.loads(ch["new"])
                     ov = json.loads(ch["old"])
@@ -230,8 +338,12 @@ if __name__ == "__main__":
                     #print(dataset[2]["rows"][r]["cells"][c],ch)
                     #print(dataset[2]["rows"][r]["cells"][c],nv)
                     if dataset[2]["rows"][r]["cells"][c] == nv:
+                        # log file recorded here
+                        # 0, start, cell_no, row_no, null, 1
+                        # <change_id>,<operation_name,<cell_no>,<row_no>,<old_val>,<new_val>
                         dataset[2]["rows"][r]["cells"][c] = ov
-                        print(dataset[2]["rows"][r]["cells"][c],ch)
+                        #print(dataset[2]["rows"][r]["cells"][c],ch)
+                #print(dataset[2]["rows"][0]["cells"])
             elif changes[1] == "com.google.refine.model.changes.ColumnAdditionChange":
                 #print(changes[2])
                 new_cell_index = int(changes[2]["newCellIndex"])
@@ -246,15 +358,70 @@ if __name__ == "__main__":
                 #print(c_idx,col)
                 #print(dataset[0]["cols"])
 
-                # remove data                                
+                # remove data
+                print(changes[2])
+                for c_key,c_val in changes[2]["val"].items():
+                    #print(dataset[2]["rows"][c_key]["cells"][new_cell_index])
+                    if dataset[2]["rows"][c_key]["cells"][new_cell_index] == c_val:
+                        print(c_key,c_val)
+                        dataset[2]["rows"][c_key]["cells"].pop(new_cell_index)
+
+                """
                 for r in dataset[2]["rows"]:
+                    # record change of new column here
                     r["cells"].pop(c_idx)
-                    
+                    #r["cells"][c_idx] = None
+                """ 
                 #print(dataset[2]["rows"])
 
                 #for r in dataset[2]["rows"]
+                #break
+            elif changes[1] == "com.google.refine.model.changes.ColumnRemovalChange" :
+                oldColumnIndex = int(changes[2]["oldColumnIndex"])
+                oldColumn = json.loads(changes[2]["oldColumn"])
+                cellIndex = oldColumn["cellIndex"]
+                name = oldColumn["name"]                
+                #print(dataset[0]["cols"])
+                dataset[0]["cols"].insert(oldColumnIndex,oldColumn)
+                #print(oldColumn)
+                #print(dataset[0]["cols"])
+                #print(changes[2])
+                for c_key,c_val in changes[2]["val"].items():
+                    #print(dataset[2]["rows"][c_key]["cells"][new_cell_index])                
+                    dataset[2]["rows"][c_key]["cells"][cellIndex] = c_val
+                """        
+                for i,r in enumerate(dataset[2]["rows"]):
+                    # record change of new column here
+                    try:
+                        r["cells"].insert(oldColumnIndex,changes[2][val][i])
+                    except:
+                        r["cells"].insert(oldColumnIndex,None)
+                """
+                #break
+            elif changes[1] == "com.google.refine.model.changes.ColumnSplitChange" :
+                #print(changes[2])
+                print(dataset[2]["rows"][0]["cells"])
+                # get the cell index
+                index_col = []
+                for col_name in changes[2]["new_columns"]:
+                    index_col.append(search_cell_column_byname(dataset[0]["cols"],col_name)[1]["cellIndex"])
+                #print(index_col)
+                #break
+                # remove column metadata
+                for ind in sorted(index_col)[::-1]:
+                    icol, col = search_cell_column(dataset[0]["cols"],ind)                                        
+                    dataset[0]["cols"].pop(icol)
+
+                # remove cells on row data 
+                for c_key in changes[2]["new_cells"].keys():
+                    dataset[2]["rows"][c_key]["cells"]
+                    for ind in sorted(index_col)[::-1]:
+                        dataset[2]["rows"][c_key]["cells"].pop(ind)
+                print(dataset[2]["rows"][0]["cells"])
+                #break
             else:
-                print(changes)
                 break
         #break
+        print(dataset[0])
+        print(dataset[2]["rows"][0]["cells"])
     pass
