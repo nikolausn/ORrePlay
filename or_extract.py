@@ -235,6 +235,11 @@ def read_change(changefile):
     elif command_name == "com.google.refine.model.changes.ColumnSplitChange" :
         line = next(changefile).replace("\n","")
         print(line)
+
+        new_columns = []
+        new_cells = {}
+        new_rows = {}       
+        
         while line:
             if line=="/ec/":
                 break
@@ -248,7 +253,6 @@ def read_change(changefile):
                 header_dict[head] = val
                 #print(head)
                 # read new column name
-                new_columns = []
                 if head == "columnNameCount":                    
                     for x in range(int(val)):
                         line = next(changefile).replace("\n","")
@@ -256,20 +260,20 @@ def read_change(changefile):
                     header_dict["new_columns"] = new_columns
 
                 # read new cells
-                new_cells = {}
-                new_rows = {}
                 if head == "rowIndexCount":
                     for x in range(int(val)):
                         line = next(changefile).replace("\n","")
                         index = int(line)
-                        new_cells[index] = [None for i in range(int(header_dict["columnNameCount"]))]
-                        new_rows[index] = None
+                        new_cells[x] = [None for i in range(int(header_dict["columnNameCount"]))]
+                        new_rows[x] = None
+
                 if head == "tupleCount":
-                    for x in range(int(val)):
+                    r_idx = list(new_cells.keys())
+                    for i,x in enumerate(range(int(val))):
                         line = next(changefile).replace("\n","")
                         for y in range(int(line)):
                             line = next(changefile).replace("\n","")
-                            new_cells[y] = line
+                            new_cells[r_idx[i]][y] = line
                     header_dict["new_cells"] = new_cells
 
                 # read new rows values
@@ -312,11 +316,15 @@ if __name__ == "__main__":
     #print([str(x["id"])+".change.zip" for x in dataset[1]["hists"][::-1]])
     #exit()
 
+    # prepare cell changes log
+    cell_changes = open("cell_changes.log","w")
+
     # read history file
     hist_dir = locex+"/history/"
     list_dir = os.listdir(hist_dir)
-    #for change in sorted(list_dir)[::-1]:
-    for change in [str(x["id"])+".change.zip" for x in dataset[1]["hists"][::-1]]:
+    #for change in sorted(list_dir)[::-1]:    
+    #order = 0
+    for order,(change_id, change) in enumerate([(x["id"],str(x["id"])+".change.zip") for x in dataset[1]["hists"][::-1]]):
         print(change)
         if change.endswith(".zip"):
             locexzip,_ = open_change(hist_dir,change,target_folder=hist_dir)
@@ -340,8 +348,11 @@ if __name__ == "__main__":
                     if dataset[2]["rows"][r]["cells"][c] == nv:
                         # log file recorded here
                         # 0, start, cell_no, row_no, null, 1
-                        # <change_id>,<operation_name,<cell_no>,<row_no>,<old_val>,<new_val>
+                        # <change_id>,<operation_name,<cell_no>,<row_no>,<old_val>,<new_val>,<row_depend>,<cell_depend>
                         dataset[2]["rows"][r]["cells"][c] = ov
+
+                        cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],r,c,ov,nv,r,c))
+
                         #print(dataset[2]["rows"][r]["cells"][c],ch)
                 #print(dataset[2]["rows"][0]["cells"])
             elif changes[1] == "com.google.refine.model.changes.ColumnAdditionChange":
@@ -365,6 +376,7 @@ if __name__ == "__main__":
                     if dataset[2]["rows"][c_key]["cells"][new_cell_index] == c_val:
                         print(c_key,c_val)
                         dataset[2]["rows"][c_key]["cells"].pop(new_cell_index)
+                        cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None))
 
                 """
                 for r in dataset[2]["rows"]:
@@ -389,6 +401,8 @@ if __name__ == "__main__":
                 for c_key,c_val in changes[2]["val"].items():
                     #print(dataset[2]["rows"][c_key]["cells"][new_cell_index])                
                     dataset[2]["rows"][c_key]["cells"][cellIndex] = c_val
+                    cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex))
+
                 """        
                 for i,r in enumerate(dataset[2]["rows"]):
                     # record change of new column here
@@ -412,16 +426,23 @@ if __name__ == "__main__":
                     icol, col = search_cell_column(dataset[0]["cols"],ind)                                        
                     dataset[0]["cols"].pop(icol)
 
+                ori_column = search_cell_column_byname(dataset[0]["cols"],changes[2]["columnName"])
+
                 # remove cells on row data 
+                # print(changes[2]["new_cells"])
                 for c_key in changes[2]["new_cells"].keys():
-                    dataset[2]["rows"][c_key]["cells"]
+                    #dataset[2]["rows"][c_key]["cells"]
                     for ind in sorted(index_col)[::-1]:
+                        cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]))
                         dataset[2]["rows"][c_key]["cells"].pop(ind)
+
                 print(dataset[2]["rows"][0]["cells"])
                 #break
             else:
+                print(changes[2])
                 break
         #break
         print(dataset[0])
         print(dataset[2]["rows"][0]["cells"])
     pass
+    cell_changes.close()
