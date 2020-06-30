@@ -324,6 +324,8 @@ if __name__ == "__main__":
     list_dir = os.listdir(hist_dir)
     #for change in sorted(list_dir)[::-1]:    
     #order = 0
+    
+    #backward
     for order,(change_id, change) in enumerate([(x["id"],str(x["id"])+".change.zip") for x in dataset[1]["hists"][::-1]]):
         print(change)
         if change.endswith(".zip"):
@@ -444,5 +446,140 @@ if __name__ == "__main__":
         #break
         print(dataset[0])
         print(dataset[2]["rows"][0]["cells"])
-    pass
+    #pass
     cell_changes.close()
+
+
+    #forward
+    for order,(change_id, change) in enumerate([(x["id"],str(x["id"])+".change.zip") for x in dataset[1]["hists"]]):
+        print(change)
+        if change.endswith(".zip"):
+            locexzip,_ = open_change(hist_dir,change,target_folder=hist_dir)
+            # read change
+            changes = read_change(locexzip+"/change.txt")
+            if changes[1] == "com.google.refine.model.changes.MassCellChange":
+                for ch in changes[3]:
+                    #print(ch)
+                    try:
+                        r = int(ch["row"])
+                    except BaseException as ex:
+                        print(ex)
+                        continue
+                    print(ch)
+                    c = int(ch["cell"])
+                    nv = json.loads(ch["new"])
+                    ov = json.loads(ch["old"])
+                    #print(dataset[2]["rows"][r])            
+                    #print(dataset[2]["rows"][r]["cells"][c],ch)
+                    #print(dataset[2]["rows"][r]["cells"][c],nv)
+                    if dataset[2]["rows"][r]["cells"][c] == ov:
+                        # log file recorded here
+                        # 0, start, cell_no, row_no, null, 1
+                        # <change_id>,<operation_name,<cell_no>,<row_no>,<old_val>,<new_val>,<row_depend>,<cell_depend>
+                        dataset[2]["rows"][r]["cells"][c] = nv
+
+                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],r,c,ov,nv,r,c))
+
+                        #print(dataset[2]["rows"][r]["cells"][c],ch)
+                #print(dataset[2]["rows"][0]["cells"])
+            elif changes[1] == "com.google.refine.model.changes.ColumnAdditionChange":
+                #print(changes[2])
+                new_cell_index = int(changes[2]["newCellIndex"])
+                #print(dataset[0])
+                # remove cell_index from coll definition
+                #print(new_cell_index)
+                #c_idx, col = search_cell_column(dataset[0]["cols"],new_cell_index)
+                #dataset[0]["cols"].pop(new_cell_index)
+                
+                # remove column
+                dataset[0]["cols"].append(col)
+                #print(c_idx,col)
+                #print(dataset[0]["cols"])
+
+                # remove data
+                print(changes[2])
+                for c_key,c_val in changes[2]["val"].items():
+                    #print(dataset[2]["rows"][c_key]["cells"][new_cell_index])
+                    #dataset[2]["rows"][c_key]["cells"].insert(new_cell_index,c_val)
+                    dataset[2]["rows"][c_key]["cells"].append(c_val)
+                    #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None))
+
+                """
+                for r in dataset[2]["rows"]:
+                    # record change of new column here
+                    r["cells"].pop(c_idx)
+                    #r["cells"][c_idx] = None
+                """ 
+                #print(dataset[2]["rows"])
+
+                #for r in dataset[2]["rows"]
+                #break
+            elif changes[1] == "com.google.refine.model.changes.ColumnRemovalChange" :
+                oldColumnIndex = int(changes[2]["oldColumnIndex"])
+                oldColumn = json.loads(changes[2]["oldColumn"])
+                cellIndex = oldColumn["cellIndex"]
+                name = oldColumn["name"]                
+                #print(dataset[0]["cols"])
+                dataset[0]["cols"].pop(oldColumnIndex)
+                #print(oldColumn)
+                #print(dataset[0]["cols"])
+                #print(changes[2])
+                for c_key,c_val in changes[2]["val"].items():
+                    #print(dataset[2]["rows"][c_key]["cells"][new_cell_index])                
+                    dataset[2]["rows"][c_key]["cells"][cellIndex] = None
+                    #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex))
+
+                #break
+            elif changes[1] == "com.google.refine.model.changes.ColumnSplitChange" :
+                #print(changes[2])
+                print(dataset[2]["rows"][0]["cells"])
+                # get the cell index
+                index_col = []
+                #print(changes[2]["new_columns"])
+                #break
+                #for col_name in changes[2]["new_columns"]:
+                #    index_col.append(search_cell_column_byname(dataset[0]["cols"],col_name)[1]["cellIndex"])
+                #print(index_col)
+                #break
+                # remove column metadata
+                """
+                for ind in range(changes[2]["columnNameCount"]):
+                    #icol, col = search_cell_column(dataset[0]["cols"],ind)
+                    dataset[0]["cols"].append(col)
+                """
+                len_col = len(dataset[2]["rows"][0]["cells"])
+
+                idx, ori_column = search_cell_column_byname(dataset[0]["cols"],changes[2]["columnName"])
+                for ic, newc in enumerate(changes[2]["new_columns"]):
+                    tt = json.loads("""{"cellIndex": 0, "originalName": "", "constraints": "{}", "type": "", "format": "default", "title": "", "description": "", "name": ""}""")                    
+                    tt["cellIndex"] = len_col+ic+1
+                    tt["originalName"] = newc
+                    tt["name"] = newc
+                    dataset[0]["cols"].insert(idx+ic+1,tt)
+
+                #dataset[0]["cols"].append(col)
+                #print(dataset[0]["cols"])
+                #break
+
+
+                # remove cells on row data 
+                # print(changes[2]["new_cells"])
+                for c_key in changes[2]["new_cells"].keys():
+                    #dataset[2]["rows"][c_key]["cells"]
+                    for ind in range(int(changes[2]["columnNameCount"])):
+                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]))
+                        if changes[2]["new_cells"][c_key][ind] is None:
+                            dataset[2]["rows"][c_key]["cells"].append(None)
+                        else:
+                            dataset[2]["rows"][c_key]["cells"].append({"v": changes[2]["new_cells"][c_key][ind][1:-1]})
+                        #dataset[2]["rows"][c_key]["cells"] = 
+
+                print(dataset[2]["rows"][0]["cells"])
+                #break
+            else:
+                print(changes[2])
+                break
+        #break
+        print(dataset[0]["cols"])
+        print(dataset[2]["rows"][0]["cells"])
+    #pass
