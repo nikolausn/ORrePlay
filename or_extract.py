@@ -287,6 +287,44 @@ def read_change(changefile):
                 line=next(changefile).replace("\n","")
             except:
                 break 
+    elif command_name == "com.google.refine.model.changes.ColumnRenameChange":
+        line = next(changefile).replace("\n","")
+        #print(line)
+        while line:
+            if line=="/ec/":
+                break
+            else:
+                head = line.split("=")[0]
+                val = None
+                try:
+                    val = "=".join(line.split("=")[1:])
+                except:
+                    pass
+                header_dict[head] = val        
+
+            try:
+                line=next(changefile).replace("\n","")
+            except:
+                break
+    elif command_name == "com.google.refine.model.changes.CellChange":
+        line = next(changefile).replace("\n","")
+        #print(line)
+        while line:
+            if line=="/ec/":
+                break
+            else:
+                head = line.split("=")[0]
+                val = None
+                try:
+                    val = "=".join(line.split("=")[1:])
+                except:
+                    pass
+                header_dict[head] = val        
+
+            try:
+                line=next(changefile).replace("\n","")
+            except:
+                break
 
     return version,command_name,header_dict,data_row
 
@@ -440,6 +478,33 @@ if __name__ == "__main__":
 
                 print(dataset[2]["rows"][0]["cells"])
                 #break
+            elif changes[1] == "com.google.refine.model.changes.ColumnRenameChange":
+                print(changes[2])
+                index_col = search_cell_column_byname(dataset[0]["cols"],changes[2]["oldColumnName"])[1]
+                print(index_col)
+                index_col["name"] = changes[2]["oldColumnName"]
+                #break            
+            elif changes[1] == "com.google.refine.model.changes.CellChange":
+                ch = changes[2]
+                try:
+                    r = int(ch["row"])
+                except BaseException as ex:
+                    print(ex)
+                    continue
+                #print(ch)
+                c = int(ch["cell"])
+                nv = json.loads(ch["new"])
+                ov = json.loads(ch["old"])
+                #print(dataset[2]["rows"][r])            
+                #print(dataset[2]["rows"][r]["cells"][c],ch)
+                #print(dataset[2]["rows"][r]["cells"][c],nv)
+                if dataset[2]["rows"][r]["cells"][c] == nv:
+                    # log file recorded here
+                    # 0, start, cell_no, row_no, null, 1
+                    # <change_id>,<operation_name,<cell_no>,<row_no>,<old_val>,<new_val>,<row_depend>,<cell_depend>
+                    #print("change exists")
+                    dataset[2]["rows"][r]["cells"][c] = ov
+                #break
             else:
                 print(changes[2])
                 break
@@ -449,6 +514,7 @@ if __name__ == "__main__":
     #pass
     cell_changes.close()
 
+    exit()
 
     #forward
     for order,(change_id, change) in enumerate([(x["id"],str(x["id"])+".change.zip") for x in dataset[1]["hists"]]):
@@ -577,7 +643,7 @@ if __name__ == "__main__":
                 print(dataset[2]["rows"][0]["cells"])
                 #break
             else:
-                print(changes[2])
+                print(changes[2])                
                 break
         #break
         print(dataset[0]["cols"])
