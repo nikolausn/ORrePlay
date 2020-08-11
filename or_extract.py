@@ -4,6 +4,8 @@ import zipfile
 import os
 from tqdm import tqdm
 import json
+import numpy as np
+import csv
 
 def extract_project(file_name,temp_folder="temp"):
     fname = ".".join(file_name.split(".")[:-2])
@@ -27,7 +29,7 @@ def read_dataset(project_file):
     zipdoc.extractall(path=locex)
     zipdoc.close()
 
-    datafile = open(locex+"/data.txt","r",encoding="UTF-8")
+    datafile = open(locex+"/data.txt","r",encoding="ascii", errors="ignore")
     
     # read column model
     column_model_dict = {}
@@ -134,7 +136,7 @@ oldColumnGroupCount=0
 
 
 def read_change(changefile):
-    changefile = open(changefile,"r",encoding="UTF-8")
+    changefile = open(changefile,"r",encoding="ascii", errors="ignore")
     # read version
     version = next(changefile).replace("\n","")
     # read command_name
@@ -325,6 +327,99 @@ def read_change(changefile):
                 line=next(changefile).replace("\n","")
             except:
                 break
+    elif command_name == "com.google.refine.model.changes.ColumnMoveChange":
+        line = next(changefile).replace("\n","")
+        #print(line)
+        while line:
+            if line=="/ec/":
+                break
+            else:
+                head = line.split("=")[0]
+                val = None
+                try:
+                    val = "=".join(line.split("=")[1:])
+                except:
+                    pass
+                header_dict[head] = val        
+
+            try:
+                line=next(changefile).replace("\n","")
+            except:
+                break
+    elif command_name == "com.google.refine.model.changes.RowReorderChange":
+        line = next(changefile).replace("\n","")
+        #print(line)
+        while line:
+            if line=="/ec/":
+                break
+            else:
+                head = line.split("=")[0]
+                val = None
+                try:
+                    val = "=".join(line.split("=")[1:])
+                except:
+                    pass
+                header_dict[head] = val
+                if head == "rowIndexCount":
+                    row_order = []                    
+                    for i,x in enumerate(range(int(val))):
+                        line = next(changefile).replace("\n","")
+                        row_order.append(int(line))
+                    header_dict["row_order"] = row_order
+
+            try:
+                line=next(changefile).replace("\n","")
+            except:
+                break
+    elif command_name == "com.google.refine.model.changes.RowRemovalChange":
+        line = next(changefile).replace("\n","")
+        #print(line)
+        while line:
+            if line=="/ec/":
+                break
+            else:
+                head = line.split("=")[0]
+                val = None
+                try:
+                    val = "=".join(line.split("=")[1:])
+                except:
+                    pass
+                header_dict[head] = val                
+                if head == "rowIndexCount":
+                    row_idx_remove = []                    
+                    for i,x in enumerate(range(int(val))):
+                        line = next(changefile).replace("\n","")
+                        row_idx_remove.append(int(line))
+                    header_dict["row_idx_remove"] = row_idx_remove
+                if head == "rowCount":
+                    old_values = []                    
+                    for i,x in enumerate(range(int(val))):
+                        line = next(changefile).replace("\n","")
+                        old_values.append(json.loads(line))
+                    header_dict["old_values"] = old_values                                    
+            try:
+                line=next(changefile).replace("\n","")
+            except:
+                break
+    elif command_name == "com.google.refine.model.changes.RowStarChange":
+        line = next(changefile).replace("\n","")
+        #print(line)
+        while line:
+            if line=="/ec/":
+                break
+            else:
+                head = line.split("=")[0]
+                val = None
+                try:
+                    val = "=".join(line.split("=")[1:])
+                except:
+                    pass
+                header_dict[head] = val                             
+            try:
+                line=next(changefile).replace("\n","")
+            except:
+                break
+
 
     return version,command_name,header_dict,data_row
 
@@ -355,7 +450,10 @@ if __name__ == "__main__":
     #exit()
 
     # prepare cell changes log
-    cell_changes = open("cell_changes.log","w")
+    cell_changes = open("cell_changes.log","w",newline="",encoding="ascii", errors="ignore")
+    cell_writer = csv.writer(cell_changes,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
+    meta_changes = open("meta_changes.log","w",encoding="ascii", errors="ignore")
+    recipe_changes = open("recipe_changes.log","w",encoding="ascii", errors="ignore")
 
     # read history file
     hist_dir = locex+"/history/"
@@ -391,7 +489,8 @@ if __name__ == "__main__":
                         # <change_id>,<operation_name,<cell_no>,<row_no>,<old_val>,<new_val>,<row_depend>,<cell_depend>
                         dataset[2]["rows"][r]["cells"][c] = ov
 
-                        cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],r,c,ov,nv,r,c))
+                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],r,c,ov,nv,r,c))
+                        cell_writer.writerow([order,change_id,changes[1],r,c,ov,nv,r,c])
 
                         #print(dataset[2]["rows"][r]["cells"][c],ch)
                 #print(dataset[2]["rows"][0]["cells"])
@@ -416,7 +515,8 @@ if __name__ == "__main__":
                     if dataset[2]["rows"][c_key]["cells"][new_cell_index] == c_val:
                         print(c_key,c_val)
                         dataset[2]["rows"][c_key]["cells"].pop(new_cell_index)
-                        cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None))
+                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None))
+                        cell_writer.writerow([order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None])
 
                 """
                 for r in dataset[2]["rows"]:
@@ -441,7 +541,8 @@ if __name__ == "__main__":
                 for c_key,c_val in changes[2]["val"].items():
                     #print(dataset[2]["rows"][c_key]["cells"][new_cell_index])                
                     dataset[2]["rows"][c_key]["cells"][cellIndex] = c_val
-                    cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex))
+                    #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex))
+                    cell_writer.writerow([order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex])
 
                 """        
                 for i,r in enumerate(dataset[2]["rows"]):
@@ -473,7 +574,8 @@ if __name__ == "__main__":
                 for c_key in changes[2]["new_cells"].keys():
                     #dataset[2]["rows"][c_key]["cells"]
                     for ind in sorted(index_col)[::-1]:
-                        cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]))
+                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]))
+                        cell_writer.writerow([order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]])
                         dataset[2]["rows"][c_key]["cells"].pop(ind)
 
                 print(dataset[2]["rows"][0]["cells"])
@@ -483,6 +585,9 @@ if __name__ == "__main__":
                 index_col = search_cell_column_byname(dataset[0]["cols"],changes[2]["oldColumnName"])[1]
                 print(index_col)
                 index_col["name"] = changes[2]["oldColumnName"]
+
+                # should be metadata change
+
                 #break            
             elif changes[1] == "com.google.refine.model.changes.CellChange":
                 ch = changes[2]
@@ -504,14 +609,72 @@ if __name__ == "__main__":
                     # <change_id>,<operation_name,<cell_no>,<row_no>,<old_val>,<new_val>,<row_depend>,<cell_depend>
                     #print("change exists")
                     dataset[2]["rows"][r]["cells"][c] = ov
+                    #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c,r,nv,ov,c,r))
+                    cell_writer.writerow([order,change_id,changes[1],c,r,nv,ov,c,r])
+
+                #break                    
+
+            elif changes[1] == "com.google.refine.model.changes.ColumnMoveChange":
+                columns = dataset[0]["cols"]
+                temp = columns[int(changes[2]["newColumnIndex"])]
+                columns[int(changes[2]["newColumnIndex"])] = columns[int(changes[2]["oldColumnIndex"])]
+                columns[int(changes[2]["oldColumnIndex"])] = temp
+
+                # should be metadata change
+
+                #break
+            elif changes[1] == "com.google.refine.model.changes.RowReorderChange":
+                # create a new row set
+                new_rows = dataset[2]["rows"]
+                old_rows = np.array(new_rows)
+                for i,li in enumerate(changes[2]["row_order"]):
+                    old_rows[li] = new_rows[i]
+
+                # Write log file
+                for i,li in enumerate(changes[2]["row_order"]):
+                    for j,jj in enumerate(new_rows[i]["cells"]):
+                        #print(j,jj,old_rows[i]["cells"][j])
+                        
+                        try:
+                            ov = old_rows[i]["cells"][j]
+                        except:
+                            ov = None
+                        
+                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],j,i,jj,ov,j,i))       
+                        cell_writer.writerow([order,change_id,changes[1],j,i,jj,ov,j,i])
+         
+
+                dataset[2]["rows"] = old_rows.tolist()
+                #break                
+            elif changes[1] == "com.google.refine.model.changes.RowRemovalChange":                
+                for i,idx in enumerate(changes[2]["row_idx_remove"]):
+                    print(idx)
+                    #j = len(changes[2]["row_idx_remove"])-i-1
+                    #print(j)
+                    dataset[2]["rows"].insert(idx,changes[2]["old_values"][i])
+                    
+                    #print(idx,dataset[2]["rows"][idx])
+                #break        
+            elif changes[1] == "com.google.refine.model.changes.RowStarChange":
+                #print(changes[2])
+                old_val = True if changes[2]["oldStarred"] == "true" else False
+                new_val = True if changes[2]["newStarred"] == "true" else False
+                #print(dataset[2]["rows"][int(changes[2]["row"])]["starred"])
+                #print(dataset[2]["rows"][idx])
+                #print(int(changes[2]["row"]),dataset[2]["rows"][int(changes[2]["row"])])
+                if dataset[2]["rows"][int(changes[2]["row"])]["starred"] == new_val:
+                    print("change starred")
+                    dataset[2]["rows"][int(changes[2]["row"])]["starred"] = old_val
                 #break
             else:
                 print(changes[2])
-                break
+                break            
         #break
-        print(dataset[0])
-        print(dataset[2]["rows"][0]["cells"])
+        #print(dataset[0])
+        #print(dataset[2]["rows"][0]["cells"])
     #pass
+    print(dataset[0])
+    print(dataset[2]["rows"][0]["cells"])
     cell_changes.close()
 
     exit()
