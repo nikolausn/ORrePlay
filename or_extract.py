@@ -7,6 +7,31 @@ import json
 import numpy as np
 import csv
 
+class RowId():
+    def __init__(self,row_id):
+        self.row_id = row_id
+    
+    def __str__(self):
+        return self.row_id
+
+class ColId():
+    def __init__(self,col_id):
+        self.col_id = col_id
+    
+    def __str__(self):
+        return self.col_id
+
+def init_column(n_col):
+    list_col = []
+    for x in range(n_col):
+        list_col.append(ColId(x))
+
+def init_row(n_row):
+    list_row = []
+    for x in range(n_row):
+        list_row.append(RowId(x))
+
+
 def extract_project(file_name,temp_folder="temp"):
     fname = ".".join(file_name.split(".")[:-2])
     tar = tarfile.open(file_name,"r:gz")
@@ -444,7 +469,15 @@ if __name__ == "__main__":
     locex,_ = extract_project(file_name)
     # extract data
     dataset = read_dataset(locex)
-    # print(dataset)
+    #columns = dataset[0]["cols"].copy()
+    #print(columns)
+    #exit()
+    recipes = {}
+    for x in dataset[1]["hists"]:
+        recipes[x["id"]] = x
+    #exit()
+    #print(recipes)
+    #exit()
     
     #print([str(x["id"])+".change.zip" for x in dataset[1]["hists"][::-1]])
     #exit()
@@ -454,6 +487,12 @@ if __name__ == "__main__":
     cell_writer = csv.writer(cell_changes,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
     meta_changes = open("meta_changes.log","w",encoding="ascii", errors="ignore")
     recipe_changes = open("recipe_changes.log","w",encoding="ascii", errors="ignore")
+    col_changes = open("col_changes.log","w",encoding="ascii", errors="ignore")
+    col_writer = csv.writer(col_changes,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
+    row_changes = open("row_changes.log","w",encoding="ascii", errors="ignore")
+    row_writer = csv.writer(row_changes,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
+    col_dependency = open("col_dependency.log","w",encoding="ascii", errors="ignore")
+    col_dep_writer = csv.writer(col_dependency,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
 
     # read history file
     hist_dir = locex+"/history/"
@@ -463,7 +502,7 @@ if __name__ == "__main__":
     
     #backward
     for order,(change_id, change) in enumerate([(x["id"],str(x["id"])+".change.zip") for x in dataset[1]["hists"][::-1]]):
-        print(change)
+        #print(change)
         if change.endswith(".zip"):
             locexzip,_ = open_change(hist_dir,change,target_folder=hist_dir)
             # read change
@@ -476,7 +515,7 @@ if __name__ == "__main__":
                     except BaseException as ex:
                         print(ex)
                         continue
-                    print(ch)
+                    #print(ch)
                     c = int(ch["cell"])
                     nv = json.loads(ch["new"])
                     ov = json.loads(ch["old"])
@@ -494,6 +533,34 @@ if __name__ == "__main__":
 
                         #print(dataset[2]["rows"][r]["cells"][c],ch)
                 #print(dataset[2]["rows"][0]["cells"])
+                columns = dataset[0]["cols"].copy()
+                col_names = [x["name"] for x in columns]
+
+                # add dependency column
+                #col_dep_writer.writerow([order,change_id,c_idx,new])                
+                #print("recipe:",recipes[change_id])
+                description = recipes[change_id]["description"]
+                # find columns from description
+                col_names = sorted(col_names,key=lambda x:len(x))[::-1]
+                print(col_names)
+                all_col = set()
+                for x in col_names:
+                    while description.find(x)>=0:
+                        all_col.add(x)
+                        description = description.replace(x,"")
+                
+                respective_index = set()
+                for x in all_col:
+                    cc = search_cell_column_byname(columns,x)
+                    icol, col = search_cell_column(columns,cc[1]["cellIndex"])  
+                    respective_index.add(icol)
+                    #print(cc)
+                
+                #print(respective_index,c_idx)
+                dependency_index = respective_index - set([c])
+                for x in dependency_index:
+                    col_dep_writer.writerow([order,change_id,changes[1],c,x])
+
             elif changes[1] == "com.google.refine.model.changes.ColumnAdditionChange":
                 #print(changes[2])
                 new_cell_index = int(changes[2]["newCellIndex"])
@@ -502,6 +569,37 @@ if __name__ == "__main__":
                 c_idx, col = search_cell_column(dataset[0]["cols"],new_cell_index)
                 #dataset[0]["cols"].pop(new_cell_index)
                 
+                columns = dataset[0]["cols"].copy()
+                col_names = [x["name"] for x in columns]
+
+                # add dependency column
+                #col_dep_writer.writerow([order,change_id,c_idx,new])                
+                #print("recipe:",recipes[change_id])
+                description = recipes[change_id]["description"]
+                # find columns from description
+                col_names = sorted(col_names,key=lambda x:len(x))[::-1]
+                print(col_names)
+                all_col = set()
+                for x in col_names:
+                    while description.find(x)>=0:
+                        all_col.add(x)
+                        description = description.replace(x,"")
+                
+                respective_index = set()
+                for x in all_col:
+                    cc = search_cell_column_byname(columns,x)
+                    icol, col = search_cell_column(columns,cc[1]["cellIndex"])  
+                    respective_index.add(icol)
+                    #print(cc)
+                
+                #print(respective_index,c_idx)
+                dependency_index = respective_index - set([c_idx])
+                for x in dependency_index:
+                    col_dep_writer.writerow([order,change_id,changes[1],c_idx,x])
+
+                #print(all_col,col)
+                #break
+
                 # remove column
                 if col["name"] == changes[2]["columnName"]:
                     dataset[0]["cols"].pop(c_idx)
@@ -509,7 +607,7 @@ if __name__ == "__main__":
                 #print(dataset[0]["cols"])
 
                 # remove data
-                print(changes[2])
+                #print(changes[2])
                 for c_key,c_val in changes[2]["val"].items():
                     #print(dataset[2]["rows"][c_key]["cells"][new_cell_index])
                     if dataset[2]["rows"][c_key]["cells"][new_cell_index] == c_val:
@@ -543,6 +641,7 @@ if __name__ == "__main__":
                     dataset[2]["rows"][c_key]["cells"][cellIndex] = c_val
                     #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex))
                     cell_writer.writerow([order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex])
+                col_writer.writerow([order,change_id,changes[1],cellIndex,None])
 
                 """        
                 for i,r in enumerate(dataset[2]["rows"]):
@@ -577,11 +676,14 @@ if __name__ == "__main__":
                         #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]))
                         cell_writer.writerow([order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]])
                         dataset[2]["rows"][c_key]["cells"].pop(ind)
+                
+                for ind in sorted(index_col)[::-1]:                
+                    col_dep_writer.writerow([order,change_id,changes[1],ind,ori_column[1]["cellIndex"]])
 
                 print(dataset[2]["rows"][0]["cells"])
                 #break
             elif changes[1] == "com.google.refine.model.changes.ColumnRenameChange":
-                print(changes[2])
+                #print(changes[2])
                 index_col = search_cell_column_byname(dataset[0]["cols"],changes[2]["oldColumnName"])[1]
                 print(index_col)
                 index_col["name"] = changes[2]["oldColumnName"]
@@ -621,6 +723,7 @@ if __name__ == "__main__":
                 columns[int(changes[2]["oldColumnIndex"])] = temp
 
                 # should be metadata change
+                col_writer.writerow([order,change_id,changes[1],int(changes[2]["newColumnIndex"]),int(changes[2]["oldColumnIndex"])])
 
                 #break
             elif changes[1] == "com.google.refine.model.changes.RowReorderChange":
@@ -629,6 +732,7 @@ if __name__ == "__main__":
                 old_rows = np.array(new_rows)
                 for i,li in enumerate(changes[2]["row_order"]):
                     old_rows[li] = new_rows[i]
+                    row_writer.writerow([order,change_id,changes[1],li,i])
 
                 # Write log file
                 for i,li in enumerate(changes[2]["row_order"]):
@@ -642,7 +746,8 @@ if __name__ == "__main__":
                         
                         #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],j,i,jj,ov,j,i))       
                         cell_writer.writerow([order,change_id,changes[1],j,i,jj,ov,j,i])
-         
+                
+
 
                 dataset[2]["rows"] = old_rows.tolist()
                 #break                
@@ -652,8 +757,18 @@ if __name__ == "__main__":
                     #j = len(changes[2]["row_idx_remove"])-i-1
                     #print(j)
                     dataset[2]["rows"].insert(idx,changes[2]["old_values"][i])
-                    
+
+                    if i<len(changes[2]["row_idx_remove"])-1:
+                        for ii in range(changes[2]["row_idx_remove"][i],changes[2]["row_idx_remove"][i+1]):                            
+                            row_writer.writerow([order,change_id,changes[1],ii,ii+1])
+                    else:
+                        for ii in range(changes[2]["row_idx_remove"][i],len(dataset[2]["rows"])-1):
+                            row_writer.writerow([order,change_id,changes[1],ii,ii+1])
                     #print(idx,dataset[2]["rows"][idx])
+                
+                #for i,idx in 
+                #row_riter.writerow([order,change_id,ori_column[1]["cellIndex"],ind])
+
                 #break        
             elif changes[1] == "com.google.refine.model.changes.RowStarChange":
                 #print(changes[2])
