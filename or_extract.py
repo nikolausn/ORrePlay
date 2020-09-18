@@ -487,6 +487,7 @@ if __name__ == "__main__":
     cell_writer = csv.writer(cell_changes,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
     meta_changes = open("meta_changes.log","w",encoding="ascii", errors="ignore")
     recipe_changes = open("recipe_changes.log","w",encoding="ascii", errors="ignore")
+    recipe_writer = csv.writer(recipe_changes,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
     col_changes = open("col_changes.log","w",encoding="ascii", errors="ignore")
     col_writer = csv.writer(col_changes,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
     row_changes = open("row_changes.log","w",encoding="ascii", errors="ignore")
@@ -504,9 +505,13 @@ if __name__ == "__main__":
     for order,(change_id, change) in enumerate([(x["id"],str(x["id"])+".change.zip") for x in dataset[1]["hists"][::-1]]):
         #print(change)
         if change.endswith(".zip"):
+
             locexzip,_ = open_change(hist_dir,change,target_folder=hist_dir)
             # read change
             changes = read_change(locexzip+"/change.txt")
+
+            recipe_writer.writerow([order,change_id,changes[1],dataset[0]["cols"]])
+
             if changes[1] == "com.google.refine.model.changes.MassCellChange":
                 for ch in changes[3]:
                     #print(ch)
