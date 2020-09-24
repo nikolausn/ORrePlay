@@ -510,13 +510,16 @@ if __name__ == "__main__":
             # read change
             changes = read_change(locexzip+"/change.txt")
 
-            recipe_writer.writerow([order,change_id,changes[1],dataset[0]["cols"]])
+            recipe_writer.writerow([order,change_id,changes[1],dataset[0]["cols"],recipes[change_id]["description"]])
 
             if changes[1] == "com.google.refine.model.changes.MassCellChange":
+                #print(changes[3])
+                is_change = False
                 for ch in changes[3]:
                     #print(ch)
                     try:
                         r = int(ch["row"])
+                        is_change = True
                     except BaseException as ex:
                         print(ex)
                         continue
@@ -544,27 +547,34 @@ if __name__ == "__main__":
                 # add dependency column
                 #col_dep_writer.writerow([order,change_id,c_idx,new])                
                 #print("recipe:",recipes[change_id])
-                description = recipes[change_id]["description"]
-                # find columns from description
-                col_names = sorted(col_names,key=lambda x:len(x))[::-1]
-                print(col_names)
-                all_col = set()
-                for x in col_names:
-                    while description.find(x)>=0:
-                        all_col.add(x)
-                        description = description.replace(x,"")
-                
-                respective_index = set()
-                for x in all_col:
-                    cc = search_cell_column_byname(columns,x)
-                    icol, col = search_cell_column(columns,cc[1]["cellIndex"])  
-                    respective_index.add(icol)
-                    #print(cc)
-                
-                #print(respective_index,c_idx)
-                dependency_index = respective_index - set([c])
-                for x in dependency_index:
-                    col_dep_writer.writerow([order,change_id,changes[1],c,x])
+                #print(len(changes[3]))
+                if is_change:
+                    description = recipes[change_id]["description"]
+                    # find columns from description
+                    #print(description)
+                    col_names = sorted(col_names,key=lambda x:len(x))[::-1]
+                    #print(col_names)
+                    all_col = set()
+                    for x in col_names:
+                        while description.find(x)>=0:
+                            all_col.add(x)
+                            description = description.replace(x,"")
+                                    
+                    respective_index = set()
+                    #print(all_col)
+                    for x in all_col:
+                        cc = search_cell_column_byname(columns,x)
+                        icol, col = search_cell_column(columns,cc[1]["cellIndex"])  
+                        #respective_index.add(icol)
+                        respective_index.add(cc[1]["cellIndex"])
+                        #print(cc)
+                    #print(c,respective_index,cc)
+                    #exit()
+                    
+                    #print(respective_index,c_idx)
+                    dependency_index = respective_index - set([c])
+                    for x in dependency_index:
+                        col_dep_writer.writerow([order,change_id,changes[1],c,x])
 
             elif changes[1] == "com.google.refine.model.changes.ColumnAdditionChange":
                 #print(changes[2])
@@ -594,14 +604,18 @@ if __name__ == "__main__":
                 for x in all_col:
                     cc = search_cell_column_byname(columns,x)
                     icol, col = search_cell_column(columns,cc[1]["cellIndex"])  
-                    respective_index.add(icol)
+                    #respective_index.add(icol)
+                    respective_index.add(cc[1]["cellIndex"])
                     #print(cc)
                 
-                #print(respective_index,c_idx)
-                dependency_index = respective_index - set([c_idx])
+                #print(respective_index,c_idx,new_cell_index)
+                dependency_index = respective_index - set([new_cell_index])
                 for x in dependency_index:
-                    col_dep_writer.writerow([order,change_id,changes[1],c_idx,x])
+                    #col_dep_writer.writerow([order,change_id,changes[1],c_idx,x])
+                    col_dep_writer.writerow([order,change_id,changes[1],new_cell_index,x])
 
+                #if order == 36:
+                #    exit()
                 #print(all_col,col)
                 #break
 

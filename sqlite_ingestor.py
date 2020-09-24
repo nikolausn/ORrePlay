@@ -26,7 +26,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS col_dependency
 #"16","1592858547560","com.google.refine.model.changes.MassCellChange","19","6"
 
 c.execute('''CREATE TABLE IF NOT EXISTS recipe_changes
-            (seq_id number, history_id text, op_name text, columns_state text)''')
+            (seq_id number, history_id text, op_name text, columns_state text, description text)''')
 
 c.execute('DELETE FROM cell_changes')
 c.execute('DELETE FROM col_changes')
@@ -118,7 +118,7 @@ with open("recipe_changes.log","r") as file:
         l = list(l)
         l[0] = int(l[0])
         try:
-            c.execute("INSERT INTO recipe_changes VALUES (?,?,?,?)",l)
+            c.execute("INSERT INTO recipe_changes VALUES (?,?,?,?,?)",l)
         except BaseException as ex:
             print(l)
             raise ex
