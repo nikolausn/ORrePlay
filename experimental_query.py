@@ -198,16 +198,25 @@ dataset = read_dataset(locex)
 
 #- [ ]  How the value on a cell was constructed (history of a cell)?
 col_id = 23
-row_id = 456
+#row_id = 456
+row_id = 65
 start_seq = 0
 # select the first column / row changes for anchor
 print("history of a cell")
 
-def history_cell(col_id,row_id,start_seq=0):
+def history_cell(col_id,row_id,start_seq=0,latest_value="",start_row_id=None):
     #print("cell trace",col_id,row_id,start_seq)
+    if start_row_id==None:
+        start_row_id = row_id
+
+    if latest_value=="":
+    #if start_seq==0:
+        latest_value = dataset[2]["rows"][int(row_id)]["cells"][int(col_id)]
+        print("cell trace",col_id,row_id,start_seq,"latest value:",latest_value)
+
     x, y = search_cell_column(dataset[0]["cols"],col_id)
     #print(min(dataset[2]["rows"].keys()))
-    print("cell trace",col_id,row_id,start_seq,"latest value:",dataset[2]["rows"][int(row_id)]["cells"][int(col_id)])
+    #print("cell trace",col_id,row_id,start_seq,"latest value:",dataset[2]["rows"][int(row_id)]["cells"][int(col_id)])
     q1 = c.execute("""
     select * from (
     select seq_id,old_col,'col_changes' from col_changes where new_col = ? and seq_id>=?
@@ -220,7 +229,7 @@ def history_cell(col_id,row_id,start_seq=0):
     xx = [x for x in q1]
     if len(xx)>0:
         xx = xx[0]        
-        print(xx)
+        #print(xx)
         change_seq = xx[0]
         change_cc = xx[1]
         change_type = xx[2]
@@ -231,10 +240,17 @@ def history_cell(col_id,row_id,start_seq=0):
     q2 = c.execute("""
     select * from cell_changes where cell_id=? and row_id=? and seq_id>=? and seq_id<? order by seq_id asc
     """,(str(col_id),str(row_id),str(start_seq),str(change_seq)))
-
+    
     
     all_result = [x for x in q2]
     #print(all_result)
+
+    if len(all_result)>0:
+        latest_value = all_result[-1][6]
+        print("cell trace",col_id,row_id,start_seq,"latest value:",latest_value)
+
+    #elif latest_value=="":
+    # first time, no change on cell_changes, set latest_value as
 
     q3 = c.execute("""
     select col_dep from col_dependency where col=? and seq_id>=? and seq_id<? order by seq_id asc
@@ -243,21 +259,26 @@ def history_cell(col_id,row_id,start_seq=0):
     #print("seq_dep",[x for x in q3])
     for x in q3:
         print("column dependency:",x[0])
-        all_result = all_result + history_cell(x[0],row_id,change_seq)
+        #all_result = all_result + history_cell(x[0],row_id,change_seq)
+        all_result = all_result + history_cell(x[0],start_row_id,0,start_row_id=start_row_id)
 
     if change_type=="col_changes":
         col_id = change_cc
+        print("col_changes:",col_id,row_id,latest_value)        
     elif change_type=="row_changes":
         row_id = change_cc
+        print("row_changes:",col_id,row_id,latest_value)        
+    else:
+        pass
 
     # dependency for the column
 
     if change_seq!=9999999:
-        all_result = all_result + history_cell(col_id,row_id,change_seq+1)
+        all_result = all_result + history_cell(col_id,row_id,change_seq+1,latest_value,start_row_id=start_row_id)
 
     return all_result
 
-print(history_cell(col_id,row_id))
+print("\n".join([str(x) for x in history_cell(col_id,row_id)]))
 
 '''
 q1 = c.execute("""
