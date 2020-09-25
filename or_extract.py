@@ -764,7 +764,7 @@ if __name__ == "__main__":
                             ov = None
                         
                         #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],j,i,jj,ov,j,i))       
-                        cell_writer.writerow([order,change_id,changes[1],j,i,jj,ov,j,i])
+                        cell_writer.writerow([order,change_id,changes[1],i,j,jj,ov,i,j])
                 
 
 
@@ -779,10 +779,10 @@ if __name__ == "__main__":
 
                     if i<len(changes[2]["row_idx_remove"])-1:
                         for ii in range(changes[2]["row_idx_remove"][i],changes[2]["row_idx_remove"][i+1]):                            
-                            row_writer.writerow([order,change_id,changes[1],ii,ii+1])
+                            row_writer.writerow([order,change_id,changes[1],ii+1+i,ii])
                     else:
                         for ii in range(changes[2]["row_idx_remove"][i],len(dataset[2]["rows"])-1):
-                            row_writer.writerow([order,change_id,changes[1],ii,ii+1])
+                            row_writer.writerow([order,change_id,changes[1],ii+1+i,ii])
                     #print(idx,dataset[2]["rows"][idx])
                 
                 #for i,idx in 

@@ -190,6 +190,133 @@ for x in q1:
     '''
 
 
+from or_extract import extract_project,read_dataset,search_cell_column
+file_name = "airbnb_dirty-csv.openrefine.tar.gz"
+locex,_ = extract_project(file_name)
+# extract data
+dataset = read_dataset(locex)
 
 #- [ ]  How the value on a cell was constructed (history of a cell)?
+col_id = 23
+row_id = 456
+start_seq = 0
+# select the first column / row changes for anchor
+print("history of a cell")
+
+def history_cell(col_id,row_id,start_seq=0):
+    #print("cell trace",col_id,row_id,start_seq)
+    x, y = search_cell_column(dataset[0]["cols"],col_id)
+    #print(min(dataset[2]["rows"].keys()))
+    print("cell trace",col_id,row_id,start_seq,"latest value:",dataset[2]["rows"][int(row_id)]["cells"][int(col_id)])
+    q1 = c.execute("""
+    select * from (
+    select seq_id,old_col,'col_changes' from col_changes where new_col = ? and seq_id>=?
+    UNION
+    select seq_id,old_row,'row_changes' from row_changes where new_row = ? and seq_id>=?
+    ) 
+    order by seq_id asc limit 1
+    """,(str(col_id),str(start_seq),str(row_id),str(start_seq)))
+
+    xx = [x for x in q1]
+    if len(xx)>0:
+        xx = xx[0]        
+        print(xx)
+        change_seq = xx[0]
+        change_cc = xx[1]
+        change_type = xx[2]
+    else:
+        change_seq = 9999999
+        change_type = None
+
+    q2 = c.execute("""
+    select * from cell_changes where cell_id=? and row_id=? and seq_id>=? and seq_id<? order by seq_id asc
+    """,(str(col_id),str(row_id),str(start_seq),str(change_seq)))
+
+    
+    all_result = [x for x in q2]
+    #print(all_result)
+
+    q3 = c.execute("""
+    select col_dep from col_dependency where col=? and seq_id>=? and seq_id<? order by seq_id asc
+    """,(str(col_id),str(start_seq),str(change_seq)))
+
+    #print("seq_dep",[x for x in q3])
+    for x in q3:
+        print("column dependency:",x[0])
+        all_result = all_result + history_cell(x[0],row_id,change_seq)
+
+    if change_type=="col_changes":
+        col_id = change_cc
+    elif change_type=="row_changes":
+        row_id = change_cc
+
+    # dependency for the column
+
+    if change_seq!=9999999:
+        all_result = all_result + history_cell(col_id,row_id,change_seq+1)
+
+    return all_result
+
+print(history_cell(col_id,row_id))
+
+'''
+q1 = c.execute("""
+select * from (
+select seq_id,old_col,'col_changes' from col_changes where new_col = ?
+UNION
+select seq_id,old_row,'row_changes' from row_changes where new_row = ?
+) order by seq_id desc limit 1
+""",(str(col_id),str(row_id)))
+
+xx = [x for x in q1]
+if len(xx)>0:
+    xx = xx[0]        
+    print(xx)
+    change_seq = xx[0]
+    change_cc = xx[1]
+    change_type = xx[2]
+else:
+    change_seq = 9999999
+    change_type = None
+q2 = c.execute("""
+select * from cell_changes where cell_id=? and row_id=? and seq_id>=? and seq_id<?
+""",(str(col_id),str(row_id),str(start_seq),str(change_seq)))
+
+print([x for x in q2])
+
+if change_type=="col_changes":
+    col_id = change_cc
+elif change_type=="row_changes":
+    row_id = change_cc
+
+#row_id = 463
+start_seq = change_seq
+# select the first column / row changes for anchor
+#print("history of a cell")
+q1 = c.execute("""
+select * from (
+select seq_id,old_col,'col_changes' from col_changes where new_col = ? and seq_id>?
+UNION
+select seq_id,old_row,'row_changes' from row_changes where new_row = ? and seq_id>?
+) order by seq_id desc limit 1
+""",(str(col_id),str(start_seq),str(row_id),str(start_seq)))
+
+xx = [x for x in q1]
+if len(xx)>0:
+    xx = xx[0]        
+    print(xx)
+    change_seq = xx[0]
+    change_type = xx[2]
+else:
+    change_seq = 9999999
+    change_type = None
+
+print(col_id,row_id,start_seq,change_seq)
+q2 = c.execute("""
+select * from cell_changes where cell_id=? and row_id=? and seq_id>=? and seq_id<?
+""",(str(col_id),str(row_id),str(start_seq),str(change_seq)))
+
+print([x for x in q2])
+'''
+
 
