@@ -204,7 +204,96 @@ start_seq = 0
 # select the first column / row changes for anchor
 print("history of a cell")
 
-def history_cell(col_id,row_id,start_seq=0,latest_value="",start_row_id=None):
+def forward_history(col_id,row_id,start_seq,start_row_id=None,old_cell=None,trace_dependency=True):
+    #print("cell trace",col_id,row_id,start_seq)
+    if start_row_id==None:
+        start_row_id = row_id
+            
+    q1 = c.execute("""
+    select * from (
+    select seq_id,new_col,'col_changes',history_id,op_name from col_changes where old_col = ? and seq_id<=?
+    UNION
+    select seq_id,new_row,'row_changes',history_id,op_name from row_changes where old_row = ? and seq_id<=?
+    ) 
+    order by seq_id desc limit 1
+    """,(str(col_id),str(start_seq),str(row_id),str(start_seq)))
+
+    xx = [x for x in q1]
+    #print("xx",xx)
+
+    if len(xx)>0:
+        xx = xx[0]        
+        #print(xx)
+        change_seq = xx[0]
+        change_cc = xx[1]
+        change_type = xx[2]
+    else:
+        change_seq = 0
+        change_type = None
+
+    q2 = c.execute("""
+    select * from cell_changes where cell_id=? and row_id=? and seq_id>? and seq_id<=? order by seq_id desc
+    """,(str(col_id),str(row_id),str(change_seq),str(start_seq)))
+    q2 = [x for x in q2]
+
+    #all_result = [x for x in q2]
+    new_cell = (col_id,row_id)
+
+    all_result = []
+    for x in q2:
+        #all_result.append(("value_change",x))
+        all_result.append((x,(x[0],old_cell,new_cell)))
+        #all_result.append(("coord_change",x))
+        #print(x[0],old_cell,new_cell)
+    
+    if len(q2)==0:
+        #all_result.append(("coord_change",(start_seq,old_cell,new_cell)))
+        all_result.append(("",(start_seq,old_cell,new_cell)))
+
+    #print(start_seq,old_cell,new_cell)
+
+    #elif latest_value=="":
+    # first time, no change on cell_changes, set latest_value as
+
+    if trace_dependency:
+        q3 = c.execute("""
+        select col from col_dependency where col_dep=? and seq_id>=? and seq_id<? order by seq_id desc
+        """,(str(col_id),str(change_seq),str(start_seq)))
+
+        #print("seq_dep",[x for x in q3])
+        for x in q3:
+            print("column dependency:",x[0])
+            #all_result = all_result + history_cell(x[0],row_id,change_seq)
+            all_result = all_result + forward_history(x[0],start_row_id,start_seq,start_row_id=start_row_id,old_cell=new_cell)
+
+    if change_type=="col_changes":
+        col_id = change_cc
+        #print("col_changes:",col_id,row_id,latest_value)        
+    elif change_type=="row_changes":
+        row_id = change_cc
+        #print("row_changes:",col_id,row_id,latest_value)        
+        #print([x for x in q1]        
+    else:
+        pass
+
+    old_cell = (col_id,row_id)
+
+    # dependency for the column
+
+    if change_seq>0:
+        all_result = all_result + forward_history(col_id,row_id,change_seq-1,start_row_id=start_row_id,old_cell=new_cell)
+    else:
+        print(start_seq-1,new_cell,old_cell)
+        if len(q2) == 0:
+            all_result.append(("",(start_seq-1,new_cell,old_cell)))
+            #all_result.append(("coord_change",(start_seq-1,new_cell,old_cell)))
+
+    
+    return all_result
+
+print("forward_history",forward_history(22,7149,27,trace_dependency=False))
+
+def history_cell(col_id,row_id,start_seq=0,latest_value="",start_row_id=None,old_cell=None):
     #print("cell trace",col_id,row_id,start_seq)
     if start_row_id==None:
         start_row_id = row_id
@@ -212,16 +301,19 @@ def history_cell(col_id,row_id,start_seq=0,latest_value="",start_row_id=None):
     if latest_value=="":
     #if start_seq==0:
         latest_value = dataset[2]["rows"][int(row_id)]["cells"][int(col_id)]
-        print("cell trace",col_id,row_id,start_seq,"latest value:",latest_value)
-
+        #print("cell trace",col_id,row_id,start_seq,"latest value:",latest_value)
+    
+    #if old_cell == None:
+    #    old_cell = (col_id,row_id,latest_value)
+            
     x, y = search_cell_column(dataset[0]["cols"],col_id)
     #print(min(dataset[2]["rows"].keys()))
     #print("cell trace",col_id,row_id,start_seq,"latest value:",dataset[2]["rows"][int(row_id)]["cells"][int(col_id)])
     q1 = c.execute("""
     select * from (
-    select seq_id,old_col,'col_changes' from col_changes where new_col = ? and seq_id>=?
+    select seq_id,old_col,'col_changes',history_id,op_name from col_changes where new_col = ? and seq_id>=?
     UNION
-    select seq_id,old_row,'row_changes' from row_changes where new_row = ? and seq_id>=?
+    select seq_id,old_row,'row_changes',history_id,op_name from row_changes where new_row = ? and seq_id>=?
     ) 
     order by seq_id asc limit 1
     """,(str(col_id),str(start_seq),str(row_id),str(start_seq)))
@@ -247,7 +339,13 @@ def history_cell(col_id,row_id,start_seq=0,latest_value="",start_row_id=None):
 
     if len(all_result)>0:
         latest_value = all_result[-1][6]
-        print("cell trace",col_id,row_id,start_seq,"latest value:",latest_value)
+        #print("cell trace",col_id,row_id,start_seq,"latest value:",latest_value)
+    #else:
+    #    all_result = all_result + [(start_seq,"","",col_id,row_id,latest_value)]
+
+    new_cell = (col_id,row_id,latest_value)
+
+    print(old_cell,new_cell)
 
     #elif latest_value=="":
     # first time, no change on cell_changes, set latest_value as
@@ -260,21 +358,31 @@ def history_cell(col_id,row_id,start_seq=0,latest_value="",start_row_id=None):
     for x in q3:
         print("column dependency:",x[0])
         #all_result = all_result + history_cell(x[0],row_id,change_seq)
-        all_result = all_result + history_cell(x[0],start_row_id,0,start_row_id=start_row_id)
+        try:
+            forward_res = forward_history(x[0],row_id,start_seq)[-1]
+        except:
+            break
+        
+        print(forward_res)
+        #all_result = all_result + history_cell(x[0],start_row_id,0,start_row_id=start_row_id,old_cell=new_cell)
+        all_result = all_result + history_cell(forward_res[1][2][0],forward_res[1][2][1],0,start_row_id=start_row_id,old_cell=new_cell)
 
     if change_type=="col_changes":
         col_id = change_cc
-        print("col_changes:",col_id,row_id,latest_value)        
+        #print("col_changes:",col_id,row_id,latest_value)        
     elif change_type=="row_changes":
         row_id = change_cc
-        print("row_changes:",col_id,row_id,latest_value)        
+        #print("row_changes:",col_id,row_id,latest_value)        
+        #print([x for x in q1]        
     else:
         pass
+    if len(xx)>0:
+        print(list(xx) + [latest_value])        
 
     # dependency for the column
 
     if change_seq!=9999999:
-        all_result = all_result + history_cell(col_id,row_id,change_seq+1,latest_value,start_row_id=start_row_id)
+        all_result = all_result + history_cell(col_id,row_id,change_seq+1,latest_value,start_row_id=start_row_id,old_cell=new_cell)
 
     return all_result
 
