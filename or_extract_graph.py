@@ -620,13 +620,6 @@ if __name__ == "__main__":
     #print(ccexs,len(ccexs))
     for temp_row_id,x in enumerate(dataset[2]["rows"]):
         #print(x["cells"])
-        cursor.execute("INSERT INTO row VALUES (?,?)",(row_id,array_id))
-        if temp_row_id==0:
-            prev_row_id = None
-
-        cursor.execute('''INSERT INTO row_position VALUES
-            (?,?,?,?)''',(row_pos_id,row_id,state_id,prev_row_id))
-
         for temp_col_id,y in enumerate(x["cells"]):
             #print(temp_col_id)
             try:
@@ -658,12 +651,791 @@ if __name__ == "__main__":
                 col_schema_id+=1
             """
 
+        cursor.execute("INSERT INTO row VALUES (?,?)",(row_id,array_id))
+        if temp_row_id==0:
+            prev_row_id = None
+
+        cursor.execute('''INSERT INTO row_position VALUES
+            (?,?,?,?)''',(row_pos_id,row_id,state_id,prev_row_id))
+
         prev_row_id=row_id
         row_id+=1
         row_pos_id+=1        
             
     #print(temp_row_id,temp_col_id,dataset[0],dataset[1])
+    conn.commit()
+    #exit()
 
+    #backward
+    ccexs_all = list(cursor.execute("SELECT * from column_schema  where state_id=? order by col_schema_id asc",(str(cc_ids),)))
+
+    for order,(change_id, change) in enumerate([(x["id"],str(x["id"])+".change.zip") for x in dataset[1]["hists"][::-1]]):
+        #print(change)
+        if change.endswith(".zip"):
+
+            locexzip,_ = open_change(hist_dir,change,target_folder=hist_dir)
+            # read change
+            changes = read_change(locexzip+"/change.txt")
+
+            recipe_writer.writerow([order,change_id,changes[1],dataset[0]["cols"],recipes[change_id]["description"]])
+            
+            # insert state
+            prev_state_id = state_id
+            state_id+=1
+            #(state_id number, array_id number, prev_state_id number, state_label text, command text)
+            #print(state_id,array_id,prev_state_id,change_id,changes[1])
+            cursor.execute("INSERT INTO state VALUES (?,?,?,?,?)",(state_id,array_id,prev_state_id,change_id,changes[1]))
+            conn.commit()
+
+            # get rows and cols indexes for the state
+            # latest state_id of change
+            rc_ids = list(cursor.execute("SELECT distinct state_id from row_position order by state_id desc limit 1"))[0][0]            
+            rcexs = list(cursor.execute("SELECT row_id from row_position  where state_id=? order by row_pos_id asc",(str(rc_ids))))
+            rcexs = [x[0] for x in rcexs]
+            #print(rcexs)
+            cc_ids = list(cursor.execute("SELECT distinct state_id from column_schema order by state_id desc limit 1"))[0][0]            
+            ccexs = list(cursor.execute("SELECT col_id,col_schema_id from column_schema  where state_id=? order by col_schema_id asc",(str(cc_ids),)))
+            ccexs = [(x[0],x[1]) for x in ccexs]
+
+            #ccexs_all = [(x[0],x[1]) for x in ccexs]
+            #print(ccexs_all)
+            #exit()
+
+
+            #exit()
+
+            if changes[1] == "com.google.refine.model.changes.MassCellChange":
+                #print(changes[3])
+                is_change = False
+                for ch in changes[3]:
+                    #print(ch)
+                    try:
+                        r = int(ch["row"])
+                        is_change = True
+                    except BaseException as ex:
+                        print(ex)
+                        continue
+                    #print(ch)
+                    c = int(ch["cell"])
+                    nv = json.loads(ch["new"])
+                    ov = json.loads(ch["old"])
+                    #print(dataset[2]["rows"][r])            
+                    #print(dataset[2]["rows"][r]["cells"][c],ch)
+                    #print(dataset[2]["rows"][r]["cells"][c],nv)
+                    if dataset[2]["rows"][r]["cells"][c] == nv:
+                        # log file recorded here
+                        # 0, start, cell_no, row_no, null, 1
+                        # <change_id>,<operation_name,<cell_no>,<row_no>,<old_val>,<new_val>,<row_depend>,<cell_depend>
+                        dataset[2]["rows"][r]["cells"][c] = ov
+
+                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],r,c,ov,nv,r,c))
+                        cell_writer.writerow([order,change_id,changes[1],r,c,ov,nv,r,c])
+
+                        # write cell_changes
+                        # get previous value_id
+                        try:
+                            cex = cursor.execute("SELECT content_id,cell_id FROM (SELECT a.content_id,a.cell_id,a.state_id FROM content a,cell b where a.cell_id=b.cell_id and b.col_id=? and b.row_id=?) order by state_id desc limit 1",(c,rcexs[r]))
+                        except BaseException as ex:
+                            print(dataset[2]["rows"][r]["cells"])
+                            print(ccexs,c,len(ccexs),len(dataset[2]["rows"][r]["cells"]))
+                            raise ex
+                        #print(dataset[2]["rows"][r]["cells"])
+                        #print(ccexs,c,len(ccexs),len(dataset[2]["rows"][r]["cells"]))
+                        #exit()
+                        #print(len(dataset[2]["rows"][r]["cells"]))
+                        try:
+                            cex = list(cex)[0]
+                        except BaseException as ex:
+                            print((r,c),list(cex))
+                            raise ex
+                            
+                        cursor.execute("INSERT INTO value VALUES (?,?)",(value_id,val))
+                        cursor.execute("INSERT INTO content VALUES (?,?,?,?,?)",(content_id,cex[1],state_id,value_id,cex[0]))
+                        value_id+=1
+                        content_id+=1
+                        #conn.commit()
+                        #exit()
+
+                        #print(dataset[2]["rows"][r]["cells"][c],ch)
+                #print(dataset[2]["rows"][0]["cells"])
+                conn.commit()
+
+                columns = dataset[0]["cols"].copy()
+                col_names = [x["name"] for x in columns]
+                
+                # add dependency column
+                #col_dep_writer.writerow([order,change_id,c_idx,new])                
+                #print("recipe:",recipes[change_id])
+                #print(len(changes[3]))
+                if is_change:
+                    description = recipes[change_id]["description"]
+                    # find columns from description
+                    #print(description)
+                    col_names = sorted(col_names,key=lambda x:len(x))[::-1]
+                    #print(col_names)
+                    all_col = set()
+                    for x in col_names:
+                        while description.find(x)>=0:
+                            all_col.add(x)
+                            description = description.replace(x,"")
+                                    
+                    respective_index = set()
+                    #print(all_col)
+                    for x in all_col:
+                        cc = search_cell_column_byname(columns,x)
+                        icol, col = search_cell_column(columns,cc[1]["cellIndex"])  
+                        #respective_index.add(icol)
+                        respective_index.add(cc[1]["cellIndex"])
+                        #print(cc)
+                    #print(c,respective_index,cc)
+                    #exit()
+                    
+                    #print(respective_index,c_idx)
+                    dependency_index = respective_index - set([c])
+                    for x in dependency_index:
+                        col_dep_writer.writerow([order,change_id,changes[1],c,x])
+
+            elif changes[1] == "com.google.refine.model.changes.ColumnAdditionChange":
+                #print(changes[2])
+                new_cell_index = int(changes[2]["newCellIndex"])
+                #print(dataset[0])
+                # remove cell_index from coll definition
+                c_idx, col = search_cell_column(dataset[0]["cols"],new_cell_index)
+                #dataset[0]["cols"].pop(new_cell_index)
+                
+                columns = dataset[0]["cols"].copy()
+                col_names = [x["name"] for x in columns]
+
+                # add dependency column
+                #col_dep_writer.writerow([order,change_id,c_idx,new])                
+                #print("recipe:",recipes[change_id])
+                description = recipes[change_id]["description"]
+                # find columns from description
+                col_names = sorted(col_names,key=lambda x:len(x))[::-1]
+                #print(col_names)
+                all_col = set()
+                for x in col_names:
+                    while description.find(x)>=0:
+                        all_col.add(x)
+                        description = description.replace(x,"")
+                
+                respective_index = set()
+                for x in all_col:
+                    cc = search_cell_column_byname(columns,x)
+                    icol, col = search_cell_column(columns,cc[1]["cellIndex"])  
+                    #respective_index.add(icol)
+                    respective_index.add(cc[1]["cellIndex"])
+                    #print(cc)
+                
+                #print(respective_index,c_idx,new_cell_index)
+                dependency_index = respective_index - set([new_cell_index])
+                for x in dependency_index:
+                    #col_dep_writer.writerow([order,change_id,changes[1],c_idx,x])
+                    col_dep_writer.writerow([order,change_id,changes[1],new_cell_index,x])
+
+                #if order == 36:
+                #    exit()
+                #print(all_col,col)
+                #break
+
+                # remove column
+                if col["name"] == changes[2]["columnName"]:
+                    dataset[0]["cols"].pop(c_idx)
+                #print(c_idx,col)
+                #print(dataset[0]["cols"])
+
+                # remove column on database state
+                """
+                temp_ccexs = ccexs.copy()
+                #print(temp_ccexs)
+                prev_col_schema_id = col_schema_id-1
+                #print(temp_ccexs,new_cell_index,c_idx,dataset[0]["cols"])
+                temp_ccexs.pop([x[0] for x in ccexs].index(new_cell_index))
+                #print(temp_ccexs,new_cell_index,c_idx)
+                for v,(vv,vy) in enumerate(temp_ccexs):
+                    if v==0:
+                        prev_vv = None                        
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                        (?,?,?,?,?,?,?)''',(col_schema_id,vv,state_id,"","",prev_vv,prev_col_schema_id))
+                    prev_vv = vv
+                    col_schema_id+=1                
+                conn.commit()       
+                """
+
+                pop_index = [x[1] for x in ccexs_all].index(new_cell_index)
+                try:
+                    next_sch = ccexs_all[pop_index+1]                         
+                except:
+                    next_sch = None
+
+                try:
+                    prev_sch_idx = ccexs_all[pop_index-1][1]
+                except:
+                    prev_sch_idx = None                 
+
+                #print(ccexs_all)
+
+                if next_sch!=None:
+                    new_next = (col_schema_id,next_sch[1],state_id,next_sch[3],next_sch[4],prev_sch_idx,next_sch[0])
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                    (?,?,?,?,?,?,?)''',new_next)
+                    col_schema_id+=1
+                    ccexs_all[pop_index+1] = new_next
+                
+                ccexs_all.pop([x[1] for x in ccexs_all].index(new_cell_index))
+                conn.commit()
+
+                #print(ccexs_all)
+                #exit()
+
+                #if at>3:
+                #    exit()
+                #at+=1
+                """
+                try:
+                    prev_sch = ccexs[c_idx-1]
+                except:
+                    prev_sch = [None,None]
+                try:
+                    next_sch = ccexs[c_idx+1]
+                except:
+                    next_sch = [None,None]
+                try:
+                    pos_sch = ccexs[c_idx]
+                except:
+                    pos_sch = [None,None]
+                
+                cursor.execute('''INSERT INTO column_schema VALUES
+                    (?,?,?,?,?,?,?)''',(col_schema_id,next_sch[0],state_id,"","",prev_sch[0],next_sch[1]))
+                col_schema_id+=1
+                #cursor.execute('''INSERT INTO column_schema VALUES
+                #    (?,?,?,?,?,?,?)''',(col_schema_id,None,state_id,"","",pos_sch[0],pos_sch[1]))
+                #col_schema_id+=1
+                """
+
+                # remove data
+                #print(changes[2])
+                for c_key,c_val in changes[2]["val"].items():
+                    #print(dataset[2]["rows"][c_key]["cells"][new_cell_index])
+                    if dataset[2]["rows"][c_key]["cells"][new_cell_index] == c_val:
+                        print(c_key,c_val)
+                        dataset[2]["rows"][c_key]["cells"].pop(new_cell_index)
+                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None))
+                        cell_writer.writerow([order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None])
+
+                """
+                for r in dataset[2]["rows"]:
+                    # record change of new column here
+                    r["cells"].pop(c_idx)
+                    #r["cells"][c_idx] = None
+                """ 
+                #print(dataset[2]["rows"])
+
+                #for r in dataset[2]["rows"]
+                #break
+            elif changes[1] == "com.google.refine.model.changes.ColumnRemovalChange" :
+                oldColumnIndex = int(changes[2]["oldColumnIndex"])
+                oldColumn = json.loads(changes[2]["oldColumn"])
+                cellIndex = oldColumn["cellIndex"]
+                name = oldColumn["name"]                
+                #print(dataset[0]["cols"])
+                dataset[0]["cols"].insert(oldColumnIndex,oldColumn)
+                #print(oldColumn)
+                #print(dataset[0]["cols"])
+                #print(changes[2])
+
+                for c_key,c_val in changes[2]["val"].items():
+                    #print(dataset[2]["rows"][c_key]["cells"][new_cell_index])                
+                    dataset[2]["rows"][c_key]["cells"][cellIndex] = c_val
+                    #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex))
+                    cell_writer.writerow([order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex])
+                col_writer.writerow([order,change_id,changes[1],cellIndex,None])
+
+
+                # add column on database state      
+                """          
+                temp_ccexs = ccexs.copy()
+                prev_col_schema_id = col_schema_id-1
+                #print(temp_ccexs)
+                #print(oldColumnIndex,oldColumn)
+                temp_ccexs.insert(oldColumnIndex,(cellIndex,None))
+                for v,(vv,vy) in enumerate(temp_ccexs):
+                    if v==0:
+                        prev_vv = None                        
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                        (?,?,?,?,?,?,?)''',(col_schema_id,vv,state_id,"","",prev_vv,prev_col_schema_id))
+                    prev_vv = vv
+                    col_schema_id+=1
+                conn.commit()
+                """
+                
+                try:
+                    next_sch = ccexs_all[oldColumnIndex]                         
+                except:
+                    next_sch = None
+
+                try:
+                    prev_sch_idx = ccexs_all[oldColumnIndex-1][1]
+                except:
+                    prev_sch_idx = None
+
+                #print(ccexs_all)
+                new_pos = (col_schema_id,cellIndex,state_id,"",name,prev_sch_idx,None)
+                cursor.execute('''INSERT INTO column_schema VALUES
+                (?,?,?,?,?,?,?)''',new_pos)
+                col_schema_id+=1
+
+                if next_sch!=None:
+                    new_next = (col_schema_id,next_sch[1],state_id,next_sch[3],next_sch[4],cellIndex,next_sch[0])
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                    (?,?,?,?,?,?,?)''',new_next)
+                    col_schema_id+=1
+                    ccexs_all[oldColumnIndex] = new_next
+
+                #print(oldColumnIndex)
+                ccexs_all.insert(oldColumnIndex,new_pos)                
+                                
+                #print(ccexs_all)
+                conn.commit()
+                #exit()
+                """
+                try:
+                    prev_sch = ccexs[c_idx-1]
+                except:
+                    prev_sch = [None,None]
+                try:
+                    next_sch = ccexs[c_idx+1]
+                except:
+                    next_sch = [None,None]
+                try:
+                    pos_sch = ccexs[c_idx]
+                except:
+                    pos_sch = [None,None]
+                
+                cursor.execute('''INSERT INTO column_schema VALUES
+                    (?,?,?,?,?,?,?)''',(col_schema_id,next_sch[0],state_id,"","",prev_sch[0],next_sch[1]))
+                col_schema_id+=1
+                #cursor.execute('''INSERT INTO column_schema VALUES
+                #    (?,?,?,?,?,?,?)''',(col_schema_id,None,state_id,"","",pos_sch[0],pos_sch[1]))
+                #col_schema_id+=1
+                """
+
+                """        
+                for i,r in enumerate(dataset[2]["rows"]):
+                    # record change of new column here
+                    try:
+                        r["cells"].insert(oldColumnIndex,changes[2][val][i])
+                    except:
+                        r["cells"].insert(oldColumnIndex,None)
+                """
+                #break
+            elif changes[1] == "com.google.refine.model.changes.ColumnSplitChange" :
+                #print(changes[2])
+                print(dataset[2]["rows"][0]["cells"])
+                # get the cell index
+                index_col = []
+                for col_name in changes[2]["new_columns"]:
+                    index_col.append(search_cell_column_byname(dataset[0]["cols"],col_name)[1]["cellIndex"])
+                #print(index_col)
+                #break
+                # remove column metadata
+                for ind in sorted(index_col)[::-1]:
+                    icol, col = search_cell_column(dataset[0]["cols"],ind)
+                    dataset[0]["cols"].pop(icol)
+
+                ori_column = search_cell_column_byname(dataset[0]["cols"],changes[2]["columnName"])
+
+                # remove cells on row data 
+                # print(changes[2]["new_cells"])
+                for c_key in changes[2]["new_cells"].keys():
+                    #dataset[2]["rows"][c_key]["cells"]
+                    for ind in sorted(index_col)[::-1]:
+                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]))
+                        cell_writer.writerow([order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]])
+                        dataset[2]["rows"][c_key]["cells"].pop(ind)
+                
+                for ind in sorted(index_col)[::-1]:                
+                    col_dep_writer.writerow([order,change_id,changes[1],ind,ori_column[1]["cellIndex"]])
+
+                #print(dataset[2]["rows"][0]["cells"])
+                # remove column on database state     
+                """           
+                temp_ccexs = ccexs.copy()
+                print(index_col)
+                for ind in sorted(index_col)[::-1]:
+                    icol, col = search_cell_column(dataset[0]["cols"],ind)
+                    #temp_ccexs.pop(icol)
+                    temp_ccexs.pop([x[0] for x in temp_ccexs].index(ind))
+
+                #temp_ccexs.pop([x[0] for x in ccexs].index(new_cell_index))
+                prev_col_schema_id = col_schema_id-1
+                for v,(vv,vy) in enumerate(temp_ccexs):
+                    if v==0:
+                        prev_vv = None                        
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                        (?,?,?,?,?,?,?)''',(col_schema_id,vv,state_id,"","",prev_vv,prev_col_schema_id))
+                    prev_vv = vv
+                    col_schema_id+=1                
+                conn.commit()
+                """
+
+                for ind in sorted(index_col)[::-1]:
+                    print(ccexs_all)
+                    pop_index = [x[1] for x in ccexs_all].index(ind)
+                    try:
+                        next_sch = ccexs_all[pop_index+1]                         
+                    except:
+                        next_sch = None
+
+                    try:
+                        prev_sch_idx = ccexs_all[pop_index-1][1]
+                    except:
+                        prev_sch_idx = None                 
+
+                    #print(ccexs_all)
+
+                    if next_sch!=None:
+                        new_next = (col_schema_id,next_sch[1],state_id,next_sch[3],next_sch[4],prev_sch_idx,next_sch[0])
+                        cursor.execute('''INSERT INTO column_schema VALUES
+                        (?,?,?,?,?,?,?)''',new_next)
+                        col_schema_id+=1
+                        ccexs_all[pop_index+1] = new_next
+                    
+                    ccexs_all.pop([x[1] for x in ccexs_all].index(ind))      
+                    print(ccexs_all)                      
+                      
+                #print(ccexs_all)
+                conn.commit()
+
+                #exit()
+                #break
+            elif changes[1] == "com.google.refine.model.changes.ColumnRenameChange":
+                #print(changes[2])
+                index_col = search_cell_column_byname(dataset[0]["cols"],changes[2]["oldColumnName"])[1]
+                print(index_col)
+                index_col["name"] = changes[2]["oldColumnName"]
+                print(changes[2])
+                #exit()
+                
+                """
+                prev_col_schema_id = col_schema_id-1
+                for v,(vv,vy) in enumerate(temp_ccexs):
+                    if v==0:
+                        prev_vv = None                        
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                        (?,?,?,?,?,?,?)''',(col_schema_id,vv,state_id,"","",prev_vv,prev_col_schema_id))
+                    prev_vv = vv
+                    col_schema_id+=1
+                """
+                #exit()
+                #print(ccexs_all)                
+                pop_index = [x[1] for x in ccexs_all].index(index_col["cellIndex"])
+                old_pop = ccexs_all[pop_index]
+
+                new_pop = (col_schema_id,old_pop[1],state_id,old_pop[3],changes[2]["oldColumnName"],old_pop[5],old_pop[0])
+                cursor.execute('''INSERT INTO column_schema VALUES
+                (?,?,?,?,?,?,?)''',new_pop)
+                col_schema_id+=1
+                ccexs_all[pop_index] = new_pop
+                
+                #print(ccexs_all)       
+                conn.commit()                    
+                # should be metadata change
+                #exit()
+
+                #break            
+            elif changes[1] == "com.google.refine.model.changes.CellChange":
+                ch = changes[2]
+                try:
+                    r = int(ch["row"])
+                except BaseException as ex:
+                    print(ex)
+                    continue
+                #print(ch)
+                c = int(ch["cell"])
+                nv = json.loads(ch["new"])
+                ov = json.loads(ch["old"])
+                #print(dataset[2]["rows"][r])            
+                #print(dataset[2]["rows"][r]["cells"][c],ch)
+                #print(dataset[2]["rows"][r]["cells"][c],nv)
+                if dataset[2]["rows"][r]["cells"][c] == nv:
+                    # log file recorded here
+                    # 0, start, cell_no, row_no, null, 1
+                    # <change_id>,<operation_name,<cell_no>,<row_no>,<old_val>,<new_val>,<row_depend>,<cell_depend>
+                    #print("change exists")
+                    dataset[2]["rows"][r]["cells"][c] = ov
+                    #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c,r,nv,ov,c,r))
+                    cell_writer.writerow([order,change_id,changes[1],c,r,nv,ov,c,r])
+
+                try:
+                    cex = cursor.execute("SELECT content_id,cell_id FROM (SELECT a.content_id,a.cell_id,a.state_id FROM content a,cell b where a.cell_id=b.cell_id and b.col_id=? and b.row_id=?) order by state_id desc limit 1",(c,rcexs[r]))
+                except BaseException as ex:
+                    print(dataset[2]["rows"][r]["cells"])
+                    print(ccexs,c,len(ccexs),len(dataset[2]["rows"][r]["cells"]))
+                    raise ex
+                #print(dataset[2]["rows"][r]["cells"])
+                #print(ccexs,c,len(ccexs),len(dataset[2]["rows"][r]["cells"]))
+                #exit()
+                #print(len(dataset[2]["rows"][r]["cells"]))
+                try:
+                    cex = list(cex)[0]
+                except BaseException as ex:
+                    print((r,c),list(cex))
+                    raise ex
+                                
+                cursor.execute("INSERT INTO value VALUES (?,?)",(value_id,ov["v"]))
+                cursor.execute("INSERT INTO content VALUES (?,?,?,?,?)",(content_id,cex[1],state_id,value_id,cex[0]))
+                value_id+=1
+                content_id+=1
+                conn.commit()
+                #exit()
+                #break                    
+
+            elif changes[1] == "com.google.refine.model.changes.ColumnMoveChange":
+                columns = dataset[0]["cols"]
+                temp = columns[int(changes[2]["newColumnIndex"])]
+                columns[int(changes[2]["newColumnIndex"])] = columns[int(changes[2]["oldColumnIndex"])]
+                columns[int(changes[2]["oldColumnIndex"])] = temp
+
+                #changes[2]["oldColumnIndex"] = 7
+                #print(changes[2])
+
+                # should be metadata change
+                col_writer.writerow([order,change_id,changes[1],int(changes[2]["newColumnIndex"]),int(changes[2]["oldColumnIndex"])])
+
+                """
+                temp_ccexs = ccexs.copy()
+                print(temp_ccexs)
+                temp = temp_ccexs[int(changes[2]["newColumnIndex"])]
+                temp_ccexs[int(changes[2]["newColumnIndex"])] = temp_ccexs[int(changes[2]["oldColumnIndex"])]
+                temp_ccexs[int(changes[2]["oldColumnIndex"])] = temp
+                print(temp_ccexs)
+                prev_col_schema_id = col_schema_id-1
+                for v,(vv,vy) in enumerate(temp_ccexs):
+                    if v==0:
+                        prev_vv = None                        
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                        (?,?,?,?,?,?,?)''',(col_schema_id,vv,state_id,"","",prev_vv,prev_col_schema_id))
+                    prev_vv = vv
+                    col_schema_id+=1
+                conn.commit()
+                """
+
+                ccexs_all_c = ccexs_all.copy()
+                pop_index = int(changes[2]["newColumnIndex"])
+                new_pop = ccexs_all_c[pop_index]
+                try:
+                    next_sch = ccexs_all_c[pop_index+1]                         
+                except:
+                    next_sch = None
+
+                try:
+                    prev_sch_idx = ccexs_all_c[pop_index-1][1]
+                except:
+                    prev_sch_idx = None
+                
+                pop_index2 = int(changes[2]["oldColumnIndex"])
+                new_pop2 = ccexs_all_c[pop_index2]
+                try:
+                    next_sch2 = ccexs_all_c[pop_index2+1]                         
+                except:
+                    next_sch2 = None
+
+                try:
+                    prev_sch_idx2 = ccexs_all_c[pop_index2-1][1]
+                except:
+                    prev_sch_idx2 = None
+                
+                print(pop_index,pop_index2,prev_sch_idx,prev_sch_idx2,new_pop,new_pop2,next_sch,next_sch2)
+                if next_sch2!=None:
+                    new_next2 = (col_schema_id,next_sch2[1],state_id,next_sch2[3],next_sch2[4],new_pop[1],next_sch2[0]) 
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                    (?,?,?,?,?,?,?)''',new_next2)
+                    ccexs_all[pop_index2+1] = new_next2
+                    col_schema_id+=1
+
+                if prev_sch_idx2==new_pop[1]:
+                    new_popp = (col_schema_id,new_pop[1],state_id,new_pop[3],new_pop[4],new_pop2[1],new_pop[0])
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                    (?,?,?,?,?,?,?)''',new_popp)
+                    col_schema_id+=1
+                    ccexs_all[pop_index2] = new_popp
+                else:
+                    if next_sch!=None:
+                        new_next = (col_schema_id,next_sch[1],state_id,next_sch[3],next_sch[4],new_pop2[1],next_sch[0]) 
+                        cursor.execute('''INSERT INTO column_schema VALUES
+                        (?,?,?,?,?,?,?)''',new_next)
+                        ccexs_all[pop_index2+1] = new_next
+                        col_schema_id+=1
+
+                    new_popp = (col_schema_id,new_pop[1],state_id,new_pop[3],new_pop[4],prev_sch_idx2,new_pop[0])
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                    (?,?,?,?,?,?,?)''',new_popp)
+                    col_schema_id+=1
+                    ccexs_all[pop_index2] = new_popp                        
+
+                new_popp2 = (col_schema_id,new_pop2[1],state_id,new_pop2[3],new_pop2[4],prev_sch_idx,new_pop2[0])
+                cursor.execute('''INSERT INTO column_schema VALUES
+                (?,?,?,?,?,?,?)''',new_popp2)
+                col_schema_id+=1
+                ccexs_all[pop_index] = new_popp2
+                
+                print(ccexs_all)
+
+                conn.commit()
+                #exit()            
+                """
+                #print(ccexs_all)
+
+                if next_sch!=None:
+                    new_next = (col_schema_id,next_sch[1],state_id,next_sch[3],next_sch[4],prev_sch_idx,next_sch[0])
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                    (?,?,?,?,?,?,?)''',new_next)
+                    col_schema_id+=1
+                    ccexs_all[pop_index+1] = new_next
+                
+                ccexs_all.pop([x[1] for x in ccexs_all].index(new_cell_index))                
+
+                old_pop = ccexs_all[pop_index]
+
+                new_pop = (col_schema_id,old_pop[1],state_id,old_pop[3],changes[2]["oldColumnName"],old_pop[5],old_pop[0])
+                cursor.execute('''INSERT INTO column_schema VALUES
+                (?,?,?,?,?,?,?)''',new_pop)
+                col_schema_id+=1
+                ccexs_all[pop_index] = new_pop
+                
+                #print(ccexs_all)       
+                conn.commit()         
+                """
+                #exit()
+
+                #break
+            elif changes[1] == "com.google.refine.model.changes.RowReorderChange":
+                # create a new row set
+                new_rows = dataset[2]["rows"]
+                old_rows = np.array(new_rows)
+                for i,li in enumerate(changes[2]["row_order"]):
+                    old_rows[li] = new_rows[i]
+                    row_writer.writerow([order,change_id,changes[1],li,i])
+                    if i == 0:
+                        prev_vv = None
+                    temp_rid = rcexs[li]
+                    cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,temp_rid,state_id,prev_vv))
+                    prev_vv = temp_rid
+                    row_pos_id+=1
+                conn.commit()
+                #exit()
+
+                # Write log file
+                for i,li in enumerate(changes[2]["row_order"]):
+                    for j,jj in enumerate(new_rows[i]["cells"]):
+                        #print(j,jj,old_rows[i]["cells"][j])
+                        
+                        try:
+                            ov = old_rows[i]["cells"][j]
+                        except:
+                            ov = None
+                        
+                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],j,i,jj,ov,j,i))       
+                        cell_writer.writerow([order,change_id,changes[1],i,j,jj,ov,i,j])
+                
+
+
+                dataset[2]["rows"] = old_rows.tolist()
+                #break                
+            elif changes[1] == "com.google.refine.model.changes.RowRemovalChange":  
+                temp_rows = list(range(row_id))
+
+                for i,idx in enumerate(changes[2]["row_idx_remove"]):
+                    #print(idx)
+                    #j = len(changes[2]["row_idx_remove"])-i-1
+                    #print(j)
+                    dataset[2]["rows"].insert(idx,changes[2]["old_values"][i])
+
+                    """
+                    for temp_col_id,y in enumerate(x["cells"]):
+                        cursor.execute("INSERT INTO cell VALUES (?,?,?)",(cell_id,temp_col_id,temp_row_id))
+                        try:
+                            val = y["v"]
+                        except:
+                            val = None
+                        cursor.execute("INSERT INTO value VALUES (?,?)",(value_id,val))
+                        cursor.execute("INSERT INTO content VALUES (?,?,?,?,?)",(content_id,cell_id,state_id,value_id,-1))
+                        cell_id+=1
+                        value_id+=1
+                        content_id+=1
+                    #(row_pos_id number, row_id number, state_id number, prev_row_id number)
+                    """
+                    # add row
+                    cursor.execute("INSERT INTO row VALUES (?,?)",(row_id,array_id))
+                    temp_rows.insert(idx,row_id)
+
+                    # exchanges row                    
+                    if i<len(changes[2]["row_idx_remove"])-1:
+                        for ii in range(changes[2]["row_idx_remove"][i],changes[2]["row_idx_remove"][i+1]):
+                            row_writer.writerow([order,change_id,changes[1],ii+1+i,ii])           
+                            #cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,ii+1+i,state_id,ii))
+                            #row_pos_id+=1
+                    else:
+                        for ii in range(changes[2]["row_idx_remove"][i],len(dataset[2]["rows"])-1):
+                            row_writer.writerow([order,change_id,changes[1],ii+1+i,ii])
+                            #cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,ii+1+i,state_id,ii))
+                            #row_pos_id+=1
+                    #print(idx,dataset[2]["rows"][idx])
+                    
+                    # add values
+                    for v,vv in enumerate(changes[2]["old_values"][i]["cells"]):                        
+                        # add one row
+                        cursor.execute("INSERT INTO cell VALUES (?,?,?)",(cell_id,v,row_id))
+                        try:
+                            val = vv["v"]
+                        except:
+                            val = None                            
+                        cursor.execute("INSERT INTO value VALUES (?,?)",(value_id,val))
+                        cursor.execute("INSERT INTO content VALUES (?,?,?,?,?)",(content_id,cell_id,state_id,value_id,-1))
+                        cell_id+=1
+                        value_id+=1
+                        content_id+=1
+                    #print(changes[2]["old_values"][i],row_id,idx)
+
+                    row_id+=1
+                    #exit()
+                    
+                conn.commit()                
+
+                for v,vv in enumerate(temp_rows):
+                    if v==0:
+                        prev_vv = None
+
+                    cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,vv,state_id,prev_vv))
+                    prev_vv = vv
+                    row_pos_id+=1
+                conn.commit()
+                #for i,idx in 
+                #row_riter.writerow([order,change_id,ori_column[1]["cellIndex"],ind])
+                #break        
+            elif changes[1] == "com.google.refine.model.changes.RowStarChange":
+                #print(changes[2])
+                old_val = True if changes[2]["oldStarred"] == "true" else False
+                new_val = True if changes[2]["newStarred"] == "true" else False
+                #print(dataset[2]["rows"][int(changes[2]["row"])]["starred"])
+                #print(dataset[2]["rows"][idx])
+                #print(int(changes[2]["row"]),dataset[2]["rows"][int(changes[2]["row"])])
+                if dataset[2]["rows"][int(changes[2]["row"])]["starred"] == new_val:
+                    print("change starred")
+                    dataset[2]["rows"][int(changes[2]["row"])]["starred"] = old_val
+                #break
+            else:
+                print(changes[2])
+                break            
+        #break
+        #print(dataset[0])
+        #print(dataset[2]["rows"][0]["cells"])
+    #pass
+    print(dataset[0])
+    print(dataset[2]["rows"][0]["cells"])
+    cell_changes.close()
+    
     prev_source_id = source_id
     source_id+=1
     prev_dataset_id=dataset_id        
@@ -674,13 +1446,15 @@ if __name__ == "__main__":
     #exit()
 
     # extract table to csv
+    import os
+    extract_folder = ".".join(file_name.split(".")[:-2])+".extract"
+    os.mkdir(extract_folder)
     print("Extracting CSV:")
     import pandas as pd
     tables = ["array","cell","column","column_schema","content","dataset","row","row_position","source","state","value"]
     for table in tables:
         print("Extract {}".format(table))
         df = pd.read_sql_query("SELECT * from {}".format(table), conn)
-        df.to_csv("{}.csv".format(table),sep=",",index=False,header=None)
-    
+        df.to_csv("{}/{}.csv".format(extract_folder,table),sep=",",index=False,header=None)
+    print("csv extracted at: {}".format(extract_folder))
     conn.close()
-
