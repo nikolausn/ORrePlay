@@ -527,6 +527,9 @@ if __name__ == "__main__":
     cursor.execute('''CREATE TABLE IF NOT EXISTS state_command
                 (state_id integer, state_label text, command text)''')
 
+    cursor.execute('''CREATE TABLE IF NOT EXISTS col_dependency
+                (state_id integer, output_column integer, input_column integer)''')
+
     # content
     cursor.execute('''CREATE TABLE IF NOT EXISTS content
                 (content_id integer, cell_id integer, state_id integer, value_id integer, prev_content_id integer)''')
@@ -801,6 +804,9 @@ if __name__ == "__main__":
                     dependency_index = respective_index - set([c])
                     #for x in dependency_index:
                     #    col_dep_writer.writerow([order,change_id,changes[1],c,x])
+                    for x in dependency_index:
+                        cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,[x[1] for x in ccexs_all].index(c),[x[1] for x in ccexs_all].index(x)))
+
 
             elif changes[1] == "com.google.refine.model.changes.ColumnAdditionChange":
                 #print(changes[2])
@@ -839,6 +845,8 @@ if __name__ == "__main__":
                 #for x in dependency_index:
                 #    ##col_dep_writer.writerow([order,change_id,changes[1],c_idx,x])
                 #    #col_dep_writer.writerow([order,change_id,changes[1],new_cell_index,x])
+                for x in dependency_index:
+                    cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,[x[1] for x in ccexs_all].index(new_cell_index),[x[1] for x in ccexs_all].index(x)))
 
                 #if order == 36:
                 #    exit()
