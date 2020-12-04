@@ -8,87 +8,6 @@ import numpy as np
 import csv
 import sqlite3
 
-db_name = 'prov_graph.db'
-if os.path.exists(db_name):
-    os.remove(db_name)
-conn = sqlite3.connect(db_name)
-
-cursor = conn.cursor()
-
-# Create table source
-cursor.execute('''CREATE TABLE IF NOT EXISTS source
-            (source_id number, source_url text, source_format text)''')
-cursor.execute('''CREATE UNIQUE INDEX source_id
-ON source(source_id)''');
-source_id = 0
-
-# Create table dataset
-cursor.execute('''CREATE TABLE IF NOT EXISTS dataset
-            (dataset_id number, source_id number)''')
-cursor.execute('''CREATE UNIQUE INDEX dataset_id
-ON dataset(dataset_id)''');
-dataset_id = 0
-
-# Create table array
-cursor.execute('''CREATE TABLE IF NOT EXISTS array
-            (array_id number, dataset_id number)''')
-cursor.execute('''CREATE UNIQUE INDEX array_id
-ON array(array_id)''');
-array_id = 0
-
-# Create table column
-cursor.execute('''CREATE TABLE IF NOT EXISTS column
-            (col_id number, array_id number)''')
-cursor.execute('''CREATE UNIQUE INDEX col_id 
-ON column(col_id)''');
-col_id = 0
-
-# row
-cursor.execute('''CREATE TABLE IF NOT EXISTS row
-            (row_id number, array_id number)''')
-cursor.execute('''CREATE UNIQUE INDEX row_id
-ON row(row_id)''')
-row_id = 0
-
-# cell
-cursor.execute('''CREATE TABLE IF NOT EXISTS cell
-            (cell_id number, col_id number, row_id number)''')
-cursor.execute('''CREATE UNIQUE INDEX cell_id
-ON cell(cell_id)''')            
-cursor.execute('''CREATE UNIQUE INDEX cell_col_row
-ON cell(col_id,row_id)''')            
-cell_id = 0
-
-# state
-cursor.execute('''CREATE TABLE IF NOT EXISTS state
-            (state_id number, array_id number, prev_state_id number, state_label text, command text)''')
-state_id = 0
-
-# content
-cursor.execute('''CREATE TABLE IF NOT EXISTS content
-            (content_id number, cell_id number, state_id number, value_id number, prev_content_id)''')
-content_id = 0
-cursor.execute('''CREATE UNIQUE INDEX content_id
-ON content(content_id)''')            
-cursor.execute('''CREATE INDEX content_cell
-ON content(cell_id)''')            
-
-# value
-cursor.execute('''CREATE TABLE IF NOT EXISTS value
-            (value_id number, value_text text)''')
-value_id = 0
-
-# column_schema
-cursor.execute('''CREATE TABLE IF NOT EXISTS column_schema
-            (col_schema_id number, col_id number, state_id number, col_type string, col_name string, prev_col_id number, prev_col_schema_id number)''')
-col_schema_id = 0
-
-# row_position
-cursor.execute('''CREATE TABLE IF NOT EXISTS row_position
-            (row_pos_id number, row_id number, state_id number, prev_row_id number)''')
-row_pos_id = 0
-
-
 class RowId():
     def __init__(self,row_id):
         self.row_id = row_id
@@ -225,21 +144,6 @@ def open_change(hist_dir,file_name,target_folder):
     zipdoc.close()
     return locex,fname
         
-"""
-3.3
-com.google.refine.model.changes.ColumnAdditionChange
-columnName=price_crazy
-columnIndex=16
-newCellIndex=24
-newCellCount=5
-564;{"v":1}
-3277;{"v":1}
-5442;{"v":1}
-5454;{"v":1}
-6934;{"v":1}
-oldColumnGroupCount=0
-/ec/
-"""
 
 
 def read_change(changefile):
@@ -546,8 +450,107 @@ def search_cell_column_byname(col_mds,name):
 
 at = 0 
 if __name__ == "__main__":
+    import sys
+    args = sys.argv
+    if len(args)!=2:
+        print("usage: {} <openrefine_projectfile>".format(args[0]))
+        exit()
+    
+    file_name = args[1]
+    print("Process file: {}".format(file_name))
+
     # extract project
-    file_name = "airbnb_dirty-csv.openrefine.tar.gz"
+    #file_name = "airbnb_dirty-csv.openrefine.tar.gz"
+    #file_name = "03_poster_demo.openrefine.tar.gz"
+
+    #prepare database
+    db_name = '{}.db'.format(".".join(file_name.split(".")[:-2]))
+    if os.path.exists(db_name):
+        os.remove(db_name)
+    conn = sqlite3.connect(db_name)
+
+    cursor = conn.cursor()
+
+    # Create table source
+    cursor.execute('''CREATE TABLE IF NOT EXISTS source
+                (source_id integer, source_url text, source_format text)''')
+    cursor.execute('''CREATE UNIQUE INDEX source_id
+    ON source(source_id)''');
+    source_id = 0
+
+    # Create table dataset
+    cursor.execute('''CREATE TABLE IF NOT EXISTS dataset
+                (dataset_id integer, source_id integer)''')
+    cursor.execute('''CREATE UNIQUE INDEX dataset_id
+    ON dataset(dataset_id)''');
+    dataset_id = 0
+
+    # Create table array
+    cursor.execute('''CREATE TABLE IF NOT EXISTS array
+                (array_id integer, dataset_id integer)''')
+    cursor.execute('''CREATE UNIQUE INDEX array_id
+    ON array(array_id)''');
+    array_id = 0
+
+    # Create table column
+    cursor.execute('''CREATE TABLE IF NOT EXISTS column
+                (col_id integer, array_id integer)''')
+    cursor.execute('''CREATE UNIQUE INDEX col_id 
+    ON column(col_id)''');
+    col_id = 0
+
+    # row
+    cursor.execute('''CREATE TABLE IF NOT EXISTS row
+                (row_id integer, array_id integer)''')
+    cursor.execute('''CREATE UNIQUE INDEX row_id
+    ON row(row_id)''')
+    row_id = 0
+
+    # cell
+    cursor.execute('''CREATE TABLE IF NOT EXISTS cell
+                (cell_id integer, col_id integer, row_id integer)''')
+    cursor.execute('''CREATE UNIQUE INDEX cell_id
+    ON cell(cell_id)''')            
+    cursor.execute('''CREATE UNIQUE INDEX cell_col_row
+    ON cell(col_id,row_id)''')            
+    cell_id = 0
+
+    # state
+    """
+    cursor.execute('''CREATE TABLE IF NOT EXISTS state
+                (state_id integer, array_id integer, prev_state_id integer, state_label text, command text)''')
+    """
+    cursor.execute('''CREATE TABLE IF NOT EXISTS state
+                (state_id integer, array_id integer, prev_state_id integer)''')
+    state_id = 0
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS state_command
+                (state_id integer, state_label text, command text)''')
+
+    # content
+    cursor.execute('''CREATE TABLE IF NOT EXISTS content
+                (content_id integer, cell_id integer, state_id integer, value_id integer, prev_content_id integer)''')
+    content_id = 0
+    cursor.execute('''CREATE UNIQUE INDEX content_id
+    ON content(content_id)''')            
+    cursor.execute('''CREATE INDEX content_cell
+    ON content(cell_id)''')            
+
+    # value
+    cursor.execute('''CREATE TABLE IF NOT EXISTS value
+                (value_id integer, value_text text)''')
+    value_id = 0
+
+    # column_schema
+    cursor.execute('''CREATE TABLE IF NOT EXISTS column_schema
+                (col_schema_id integer, col_id integer, state_id integer, col_type string, col_name string, prev_col_id integer, prev_col_schema_id integer)''')
+    col_schema_id = 0
+
+    # row_position
+    cursor.execute('''CREATE TABLE IF NOT EXISTS row_position
+                (row_pos_id integer, row_id integer, state_id integer, prev_row_id integer)''')
+    row_pos_id = 0
+
     cursor.execute("INSERT INTO source VALUES (?,?,?)",(source_id,file_name,"OpenRefine Project File"))
 
     locex,_ = extract_project(file_name)
@@ -570,6 +573,7 @@ if __name__ == "__main__":
     #exit()
 
     # prepare cell changes log
+    """
     cell_changes = open("cell_changes.log","w",newline="",encoding="ascii", errors="ignore")
     cell_writer = csv.writer(cell_changes,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
     meta_changes = open("meta_changes.log","w",encoding="ascii", errors="ignore")
@@ -581,6 +585,7 @@ if __name__ == "__main__":
     row_writer = csv.writer(row_changes,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
     col_dependency = open("col_dependency.log","w",encoding="ascii", errors="ignore")
     col_dep_writer = csv.writer(col_dependency,delimiter=",",quotechar='"',quoting=csv.QUOTE_ALL,escapechar="\\",doublequote=False)
+    """
 
     # read history file
     hist_dir = locex+"/history/"
@@ -597,17 +602,17 @@ if __name__ == "__main__":
                 (content_id number, cell_id number, state_id number, value_id number, prev_content_id)''')
     """
 
-    print(dataset[0]["cols"],len(dataset[0]["cols"]))
-    print(sorted([x["cellIndex"] for x in dataset[0]["cols"]]))
+    #print(dataset[0]["cols"],len(dataset[0]["cols"]))
+    #print(sorted([x["cellIndex"] for x in dataset[0]["cols"]]))
     #exit()
     for ix, xx in enumerate(dataset[0]["cols"]):
         cursor.execute("INSERT INTO column VALUES (?,?)",(col_id,array_id))
         tcid = xx["cellIndex"]
         if ix==0:
-            prev_col_id = None
+            prev_col_id = -1
 
         cursor.execute('''INSERT INTO column_schema VALUES
-            (?,?,?,?,?,?,?)''',(col_schema_id,tcid,state_id,"",xx["name"],prev_col_id,None))
+            (?,?,?,?,?,?,?)''',(col_schema_id,tcid,state_id,"",xx["name"],prev_col_id,-1))
 
         prev_col_id=tcid
         col_id+=1
@@ -653,7 +658,7 @@ if __name__ == "__main__":
 
         cursor.execute("INSERT INTO row VALUES (?,?)",(row_id,array_id))
         if temp_row_id==0:
-            prev_row_id = None
+            prev_row_id = -1
 
         cursor.execute('''INSERT INTO row_position VALUES
             (?,?,?,?)''',(row_pos_id,row_id,state_id,prev_row_id))
@@ -677,14 +682,16 @@ if __name__ == "__main__":
             # read change
             changes = read_change(locexzip+"/change.txt")
 
-            recipe_writer.writerow([order,change_id,changes[1],dataset[0]["cols"],recipes[change_id]["description"]])
+            #recipe_writer.writerow([order,change_id,changes[1],dataset[0]["cols"],recipes[change_id]["description"]])
             
             # insert state
             prev_state_id = state_id
             state_id+=1
             #(state_id number, array_id number, prev_state_id number, state_label text, command text)
             #print(state_id,array_id,prev_state_id,change_id,changes[1])
-            cursor.execute("INSERT INTO state VALUES (?,?,?,?,?)",(state_id,array_id,prev_state_id,change_id,changes[1]))
+            #cursor.execute("INSERT INTO state VALUES (?,?,?,?,?)",(state_id,array_id,prev_state_id,change_id,changes[1]))
+            cursor.execute("INSERT INTO state VALUES (?,?,?)",(state_id,array_id,prev_state_id))
+            cursor.execute("INSERT INTO state_command VALUES (?,?,?)",(state_id,change_id,changes[1]))
             conn.commit()
 
             # get rows and cols indexes for the state
@@ -729,7 +736,7 @@ if __name__ == "__main__":
                         dataset[2]["rows"][r]["cells"][c] = ov
 
                         #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],r,c,ov,nv,r,c))
-                        cell_writer.writerow([order,change_id,changes[1],r,c,ov,nv,r,c])
+                        #cell_writer.writerow([order,change_id,changes[1],r,c,ov,nv,r,c])
 
                         # write cell_changes
                         # get previous value_id
@@ -764,7 +771,7 @@ if __name__ == "__main__":
                 col_names = [x["name"] for x in columns]
                 
                 # add dependency column
-                #col_dep_writer.writerow([order,change_id,c_idx,new])                
+                ##col_dep_writer.writerow([order,change_id,c_idx,new])                
                 #print("recipe:",recipes[change_id])
                 #print(len(changes[3]))
                 if is_change:
@@ -792,8 +799,8 @@ if __name__ == "__main__":
                     
                     #print(respective_index,c_idx)
                     dependency_index = respective_index - set([c])
-                    for x in dependency_index:
-                        col_dep_writer.writerow([order,change_id,changes[1],c,x])
+                    #for x in dependency_index:
+                    #    col_dep_writer.writerow([order,change_id,changes[1],c,x])
 
             elif changes[1] == "com.google.refine.model.changes.ColumnAdditionChange":
                 #print(changes[2])
@@ -807,7 +814,7 @@ if __name__ == "__main__":
                 col_names = [x["name"] for x in columns]
 
                 # add dependency column
-                #col_dep_writer.writerow([order,change_id,c_idx,new])                
+                ##col_dep_writer.writerow([order,change_id,c_idx,new])                
                 #print("recipe:",recipes[change_id])
                 description = recipes[change_id]["description"]
                 # find columns from description
@@ -829,9 +836,9 @@ if __name__ == "__main__":
                 
                 #print(respective_index,c_idx,new_cell_index)
                 dependency_index = respective_index - set([new_cell_index])
-                for x in dependency_index:
-                    #col_dep_writer.writerow([order,change_id,changes[1],c_idx,x])
-                    col_dep_writer.writerow([order,change_id,changes[1],new_cell_index,x])
+                #for x in dependency_index:
+                #    ##col_dep_writer.writerow([order,change_id,changes[1],c_idx,x])
+                #    #col_dep_writer.writerow([order,change_id,changes[1],new_cell_index,x])
 
                 #if order == 36:
                 #    exit()
@@ -920,8 +927,8 @@ if __name__ == "__main__":
                     if dataset[2]["rows"][c_key]["cells"][new_cell_index] == c_val:
                         print(c_key,c_val)
                         dataset[2]["rows"][c_key]["cells"].pop(new_cell_index)
-                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None))
-                        cell_writer.writerow([order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None])
+                        ##cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None))
+                        #cell_writer.writerow([order,change_id,changes[1],c_key,new_cell_index,None,c_val,c_key,None])
 
                 """
                 for r in dataset[2]["rows"]:
@@ -947,9 +954,9 @@ if __name__ == "__main__":
                 for c_key,c_val in changes[2]["val"].items():
                     #print(dataset[2]["rows"][c_key]["cells"][new_cell_index])                
                     dataset[2]["rows"][c_key]["cells"][cellIndex] = c_val
-                    #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex))
-                    cell_writer.writerow([order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex])
-                col_writer.writerow([order,change_id,changes[1],cellIndex,None])
+                    ##cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex))
+                    #cell_writer.writerow([order,change_id,changes[1],c_key,cellIndex,c_val,None,c_key,cellIndex])
+                #col_writer.writerow([order,change_id,changes[1],cellIndex,None])
 
 
                 # add column on database state      
@@ -977,10 +984,10 @@ if __name__ == "__main__":
                 try:
                     prev_sch_idx = ccexs_all[oldColumnIndex-1][1]
                 except:
-                    prev_sch_idx = None
+                    prev_sch_idx = -1
 
                 #print(ccexs_all)
-                new_pos = (col_schema_id,cellIndex,state_id,"",name,prev_sch_idx,None)
+                new_pos = (col_schema_id,cellIndex,state_id,"",name,prev_sch_idx,-1)
                 cursor.execute('''INSERT INTO column_schema VALUES
                 (?,?,?,?,?,?,?)''',new_pos)
                 col_schema_id+=1
@@ -1050,12 +1057,12 @@ if __name__ == "__main__":
                 for c_key in changes[2]["new_cells"].keys():
                     #dataset[2]["rows"][c_key]["cells"]
                     for ind in sorted(index_col)[::-1]:
-                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]))
-                        cell_writer.writerow([order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]])
+                        ##cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]))
+                        #cell_writer.writerow([order,change_id,changes[1],c_key,ind,None,dataset[2]["rows"][c_key]["cells"][ind],c_key,ori_column[1]["cellIndex"]])
                         dataset[2]["rows"][c_key]["cells"].pop(ind)
                 
-                for ind in sorted(index_col)[::-1]:                
-                    col_dep_writer.writerow([order,change_id,changes[1],ind,ori_column[1]["cellIndex"]])
+                #for ind in sorted(index_col)[::-1]:                
+                #    col_dep_writer.writerow([order,change_id,changes[1],ind,ori_column[1]["cellIndex"]])
 
                 #print(dataset[2]["rows"][0]["cells"])
                 # remove column on database state     
@@ -1090,7 +1097,7 @@ if __name__ == "__main__":
                     try:
                         prev_sch_idx = ccexs_all[pop_index-1][1]
                     except:
-                        prev_sch_idx = None                 
+                        prev_sch_idx = -1                 
 
                     #print(ccexs_all)
 
@@ -1164,8 +1171,8 @@ if __name__ == "__main__":
                     # <change_id>,<operation_name,<cell_no>,<row_no>,<old_val>,<new_val>,<row_depend>,<cell_depend>
                     #print("change exists")
                     dataset[2]["rows"][r]["cells"][c] = ov
-                    #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c,r,nv,ov,c,r))
-                    cell_writer.writerow([order,change_id,changes[1],c,r,nv,ov,c,r])
+                    ##cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],c,r,nv,ov,c,r))
+                    #cell_writer.writerow([order,change_id,changes[1],c,r,nv,ov,c,r])
 
                 try:
                     cex = cursor.execute("SELECT content_id,cell_id FROM (SELECT a.content_id,a.cell_id,a.state_id FROM content a,cell b where a.cell_id=b.cell_id and b.col_id=? and b.row_id=?) order by state_id desc limit 1",(c,rcexs[r]))
@@ -1201,7 +1208,7 @@ if __name__ == "__main__":
                 #print(changes[2])
 
                 # should be metadata change
-                col_writer.writerow([order,change_id,changes[1],int(changes[2]["newColumnIndex"]),int(changes[2]["oldColumnIndex"])])
+                #col_writer.writerow([order,change_id,changes[1],int(changes[2]["newColumnIndex"]),int(changes[2]["oldColumnIndex"])])
 
                 """
                 temp_ccexs = ccexs.copy()
@@ -1221,6 +1228,12 @@ if __name__ == "__main__":
                 conn.commit()
                 """
 
+                # switch columnIndex if newColumn > oldColumn
+                if changes[2]["newColumnIndex"] > changes[2]["oldColumnIndex"]:
+                    temp = changes[2]["newColumnIndex"]
+                    changes[2]["newColumnIndex"] = changes[2]["oldColumnIndex"]
+                    changes[2]["oldColumnIndex"] = temp
+                
                 ccexs_all_c = ccexs_all.copy()
                 pop_index = int(changes[2]["newColumnIndex"])
                 new_pop = ccexs_all_c[pop_index]
@@ -1232,7 +1245,7 @@ if __name__ == "__main__":
                 try:
                     prev_sch_idx = ccexs_all_c[pop_index-1][1]
                 except:
-                    prev_sch_idx = None
+                    prev_sch_idx = -1
                 
                 pop_index2 = int(changes[2]["oldColumnIndex"])
                 new_pop2 = ccexs_all_c[pop_index2]
@@ -1244,7 +1257,7 @@ if __name__ == "__main__":
                 try:
                     prev_sch_idx2 = ccexs_all_c[pop_index2-1][1]
                 except:
-                    prev_sch_idx2 = None
+                    prev_sch_idx2 = -1
                 
                 print(pop_index,pop_index2,prev_sch_idx,prev_sch_idx2,new_pop,new_pop2,next_sch,next_sch2)
                 if next_sch2!=None:
@@ -1316,9 +1329,9 @@ if __name__ == "__main__":
                 old_rows = np.array(new_rows)
                 for i,li in enumerate(changes[2]["row_order"]):
                     old_rows[li] = new_rows[i]
-                    row_writer.writerow([order,change_id,changes[1],li,i])
+                    #row_writer.writerow([order,change_id,changes[1],li,i])
                     if i == 0:
-                        prev_vv = None
+                        prev_vv = -1
                     temp_rid = rcexs[li]
                     cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,temp_rid,state_id,prev_vv))
                     prev_vv = temp_rid
@@ -1336,8 +1349,8 @@ if __name__ == "__main__":
                         except:
                             ov = None
                         
-                        #cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],j,i,jj,ov,j,i))       
-                        cell_writer.writerow([order,change_id,changes[1],i,j,jj,ov,i,j])
+                        ##cell_changes.write("{},{},{},{},{},{},{},{},{}\n".format(order,change_id,changes[1],j,i,jj,ov,j,i))       
+                        #cell_writer.writerow([order,change_id,changes[1],i,j,jj,ov,i,j])
                 
 
 
@@ -1373,12 +1386,15 @@ if __name__ == "__main__":
                     # exchanges row                    
                     if i<len(changes[2]["row_idx_remove"])-1:
                         for ii in range(changes[2]["row_idx_remove"][i],changes[2]["row_idx_remove"][i+1]):
-                            row_writer.writerow([order,change_id,changes[1],ii+1+i,ii])           
+                            #row_writer.writerow([order,change_id,changes[1],ii+1+i,ii])           
+                            pass
                             #cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,ii+1+i,state_id,ii))
                             #row_pos_id+=1
+                            
                     else:
                         for ii in range(changes[2]["row_idx_remove"][i],len(dataset[2]["rows"])-1):
-                            row_writer.writerow([order,change_id,changes[1],ii+1+i,ii])
+                            #row_writer.writerow([order,change_id,changes[1],ii+1+i,ii])
+                            pass
                             #cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,ii+1+i,state_id,ii))
                             #row_pos_id+=1
                     #print(idx,dataset[2]["rows"][idx])
@@ -1434,7 +1450,6 @@ if __name__ == "__main__":
     #pass
     print(dataset[0])
     print(dataset[2]["rows"][0]["cells"])
-    cell_changes.close()
     
     prev_source_id = source_id
     source_id+=1
@@ -1448,13 +1463,30 @@ if __name__ == "__main__":
     # extract table to csv
     import os
     extract_folder = ".".join(file_name.split(".")[:-2])+".extract"
-    os.mkdir(extract_folder)
+    try:
+        os.mkdir(extract_folder)
+    except:
+        pass
     print("Extracting CSV:")
     import pandas as pd
+    import csv
     tables = ["array","cell","column","column_schema","content","dataset","row","row_position","source","state","value"]
+    table_files = []
     for table in tables:
         print("Extract {}".format(table))
         df = pd.read_sql_query("SELECT * from {}".format(table), conn)
-        df.to_csv("{}/{}.csv".format(extract_folder,table),sep=",",index=False,header=None)
+        df.to_csv("{}/{}.csv".format(extract_folder,table),sep=",",index=False,header=None,quotechar='"',quoting=csv.QUOTE_NONNUMERIC)
+        table_files.append((table,"{}/{}.csv".format(extract_folder,table)))
     print("csv extracted at: {}".format(extract_folder))
+    # prepare datalog files
+    #print("prepare datalog files: {}/facts.pl".format(extract_folder))
+    with open("{}/facts.pl".format(extract_folder),"w") as writer:
+        for x,y in table_files:
+            with open(y,"r") as file:
+                for l in file:
+                    # remove whitespace
+                    l = l[:-1]
+                    writer.write("{}({}).\n".format(x,l))
+    print("prepared datalog files: {}/facts.pl".format(extract_folder))
+                    
     conn.close()
