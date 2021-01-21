@@ -615,7 +615,7 @@ if __name__ == "__main__":
             prev_col_id = -1
 
         cursor.execute('''INSERT INTO column_schema VALUES
-            (?,?,?,?,?,?,?)''',(col_schema_id,tcid,state_id,"",xx["name"],prev_col_id,-1))
+            (?,?,?,?,?,?,?)''',(col_schema_id,tcid,state_id-1,"",xx["name"],prev_col_id,-1))
 
         prev_col_id=tcid
         col_id+=1
@@ -639,8 +639,10 @@ if __name__ == "__main__":
                 val = y["v"]
             except:
                 val = None
+            if type(val)==str:
+                val = val.replace("\\","\\\\")
             cursor.execute("INSERT INTO value VALUES (?,?)",(value_id,val))
-            cursor.execute("INSERT INTO content VALUES (?,?,?,?,?)",(content_id,cell_id,state_id,value_id,-1))
+            cursor.execute("INSERT INTO content VALUES (?,?,?,?,?)",(content_id,cell_id,-1,value_id,-1))
             cell_id+=1
             value_id+=1
             content_id+=1            
@@ -663,9 +665,10 @@ if __name__ == "__main__":
         if temp_row_id==0:
             prev_row_id = -1
 
+        #cursor.execute('''INSERT INTO row_position VALUES
+        #    (?,?,?,?)''',(row_pos_id,row_id,state_id,prev_row_id))
         cursor.execute('''INSERT INTO row_position VALUES
-            (?,?,?,?)''',(row_pos_id,row_id,state_id,prev_row_id))
-
+            (?,?,?,?)''',(row_pos_id,row_id,-1,prev_row_id))
         prev_row_id=row_id
         row_id+=1
         row_pos_id+=1        
@@ -688,19 +691,23 @@ if __name__ == "__main__":
             #recipe_writer.writerow([order,change_id,changes[1],dataset[0]["cols"],recipes[change_id]["description"]])
             
             # insert state
-            prev_state_id = state_id
-            state_id+=1
+            #prev_state_id = state_id
+            #state_id+=1            
             #(state_id number, array_id number, prev_state_id number, state_label text, command text)
             #print(state_id,array_id,prev_state_id,change_id,changes[1])
             #cursor.execute("INSERT INTO state VALUES (?,?,?,?,?)",(state_id,array_id,prev_state_id,change_id,changes[1]))
+            if order == 0:
+                prev_state_id = -1
+
             cursor.execute("INSERT INTO state VALUES (?,?,?)",(state_id,array_id,prev_state_id))
+            #cursor.execute("INSERT INTO state VALUES (?,?,?)",(state_id,array_id,state_id))
             cursor.execute("INSERT INTO state_command VALUES (?,?,?)",(state_id,change_id,changes[1]))
             conn.commit()
 
             # get rows and cols indexes for the state
             # latest state_id of change
             rc_ids = list(cursor.execute("SELECT distinct state_id from row_position order by state_id desc limit 1"))[0][0]            
-            rcexs = list(cursor.execute("SELECT row_id from row_position  where state_id=? order by row_pos_id asc",(str(rc_ids))))
+            rcexs = list(cursor.execute("SELECT row_id from row_position  where state_id=? order by row_pos_id asc",(str(rc_ids),)))
             rcexs = [x[0] for x in rcexs]
             #print(rcexs)
             cc_ids = list(cursor.execute("SELECT distinct state_id from column_schema order by state_id desc limit 1"))[0][0]            
@@ -758,6 +765,9 @@ if __name__ == "__main__":
                         except BaseException as ex:
                             print((r,c),list(cex))
                             raise ex
+                        
+                        if type(val)==str:
+                            val = val.replace("\\","\\\\")
                             
                         cursor.execute("INSERT INTO value VALUES (?,?)",(value_id,val))
                         cursor.execute("INSERT INTO content VALUES (?,?,?,?,?)",(content_id,cex[1],state_id,value_id,cex[0]))
@@ -1197,7 +1207,10 @@ if __name__ == "__main__":
                 except BaseException as ex:
                     print((r,c),list(cex))
                     raise ex
-                                
+
+                if type(ov["v"])==str:
+                    ov["v"] = ov["v"].replace("\\","\\\\")
+
                 cursor.execute("INSERT INTO value VALUES (?,?)",(value_id,ov["v"]))
                 cursor.execute("INSERT INTO content VALUES (?,?,?,?,?)",(content_id,cex[1],state_id,value_id,cex[0]))
                 value_id+=1
@@ -1341,7 +1354,7 @@ if __name__ == "__main__":
                     if i == 0:
                         prev_vv = -1
                     temp_rid = rcexs[li]
-                    cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,temp_rid,state_id,prev_vv))
+                    cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,temp_rid,state_id,int(prev_vv)))
                     prev_vv = temp_rid
                     row_pos_id+=1
                 conn.commit()
@@ -1415,6 +1428,8 @@ if __name__ == "__main__":
                             val = vv["v"]
                         except:
                             val = None                            
+                        if type(val)==str:
+                            val = val.replace("\\","\\\\")
                         cursor.execute("INSERT INTO value VALUES (?,?)",(value_id,val))
                         cursor.execute("INSERT INTO content VALUES (?,?,?,?,?)",(content_id,cell_id,state_id,value_id,-1))
                         cell_id+=1
@@ -1429,9 +1444,9 @@ if __name__ == "__main__":
 
                 for v,vv in enumerate(temp_rows):
                     if v==0:
-                        prev_vv = None
+                        prev_vv = -1
 
-                    cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,vv,state_id,prev_vv))
+                    cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,vv,state_id,int(prev_vv)))
                     prev_vv = vv
                     row_pos_id+=1
                 conn.commit()
@@ -1452,9 +1467,13 @@ if __name__ == "__main__":
             else:
                 print(changes[2])
                 break            
+            
+            prev_state_id=state_id
+            state_id+=1
         #break
         #print(dataset[0])
         #print(dataset[2]["rows"][0]["cells"])
+
     #pass
     print(dataset[0])
     print(dataset[2]["rows"][0]["cells"])
@@ -1478,12 +1497,12 @@ if __name__ == "__main__":
     print("Extracting CSV:")
     import pandas as pd
     import csv
-    tables = ["array","cell","column","column_schema","content","dataset","row","row_position","source","state","value"]
+    tables = ["array","cell","column","column_schema","content","dataset","row","row_position","source","state","value","state_command","col_dependency"]
     table_files = []
     for table in tables:
         print("Extract {}".format(table))
         df = pd.read_sql_query("SELECT * from {}".format(table), conn)
-        df.to_csv("{}/{}.csv".format(extract_folder,table),sep=",",index=False,header=None,quotechar='"',quoting=csv.QUOTE_NONNUMERIC)
+        df.to_csv("{}/{}.csv".format(extract_folder,table),sep=",",index=False,header=None,quotechar='"',escapechar="\\",doublequote=False,quoting=csv.QUOTE_NONNUMERIC)
         table_files.append((table,"{}/{}.csv".format(extract_folder,table)))
     print("csv extracted at: {}".format(extract_folder))
     # prepare datalog files
