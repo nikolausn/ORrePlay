@@ -7,6 +7,7 @@ import json
 import numpy as np
 import csv
 import sqlite3
+import networkx as nx
 
 class RowId():
     def __init__(self,row_id):
@@ -522,13 +523,18 @@ if __name__ == "__main__":
     """
     cursor.execute('''CREATE TABLE IF NOT EXISTS state
                 (state_id integer, array_id integer, prev_state_id integer)''')
-    state_id = 0
-
+    cursor.execute('''CREATE TABLE IF NOT EXISTS state_detail
+                (state_id integer, array_id integer, detail text)''') 
     cursor.execute('''CREATE TABLE IF NOT EXISTS state_command
                 (state_id integer, state_label text, command text)''')
+    state_id = 0
 
+    
     cursor.execute('''CREATE TABLE IF NOT EXISTS col_dependency
                 (state_id integer, output_column integer, input_column integer)''')
+    
+    # create network for dependency
+    col_dependency_graph = nx.DiGraph()
 
     # content
     cursor.execute('''CREATE TABLE IF NOT EXISTS content
@@ -608,8 +614,14 @@ if __name__ == "__main__":
     #print(dataset[0]["cols"],len(dataset[0]["cols"]))
     #print(sorted([x["cellIndex"] for x in dataset[0]["cols"]]))
     #exit()
+    
+    # insert column maximum index
+    for xx in range(int(dataset[0]["maxCellIndex"])+1):
+        cursor.execute("INSERT INTO column VALUES (?,?)",(xx,array_id))
+        col_dependency_graph.add_node(xx)
+
     for ix, xx in enumerate(dataset[0]["cols"]):
-        cursor.execute("INSERT INTO column VALUES (?,?)",(col_id,array_id))
+        #cursor.execute("INSERT INTO column VALUES (?,?)",(col_id,array_id))
         tcid = xx["cellIndex"]
         if ix==0:
             prev_col_id = -1
@@ -623,7 +635,7 @@ if __name__ == "__main__":
 
     cc_ids = list(cursor.execute("SELECT distinct state_id from column_schema order by state_id desc limit 1"))[0][0]            
     ccexs = list(cursor.execute("SELECT col_id,col_schema_id from column_schema  where state_id=? order by col_schema_id asc",(str(cc_ids),)))
-    ccexs = [(x[0],x[1]) for x in ccexs]
+    ccexs = [(x[0],x[1]) for x in ccexs]    
 
     #print(ccexs,len(ccexs))
     for temp_row_id,x in enumerate(dataset[2]["rows"]):
@@ -700,8 +712,13 @@ if __name__ == "__main__":
                 prev_state_id = -1
 
             cursor.execute("INSERT INTO state VALUES (?,?,?)",(state_id,array_id,prev_state_id))
+
+            # extract operation history data
+            cursor.execute("INSERT INTO state_detail VALUES (?,?,?)",(state_id,array_id,json.dumps(recipes[change_id])))
+
             #cursor.execute("INSERT INTO state VALUES (?,?,?)",(state_id,array_id,state_id))
             cursor.execute("INSERT INTO state_command VALUES (?,?,?)",(state_id,change_id,changes[1]))
+
             conn.commit()
 
             # get rows and cols indexes for the state
@@ -721,9 +738,17 @@ if __name__ == "__main__":
 
             #exit()
 
+            #op-1
             if changes[1] == "com.google.refine.model.changes.MassCellChange":
                 #print(changes[3])
+                #print(changes)
                 is_change = False
+
+                cc = search_cell_column_byname(columns,changes[2]["commonColumnName"])
+                #print(cc)
+                cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,int(cc[1]["cellIndex"]),int(cc[1]["cellIndex"])))
+
+
                 for ch in changes[3]:
                     #print(ch)
                     try:
@@ -815,9 +840,12 @@ if __name__ == "__main__":
                     #for x in dependency_index:
                     #    col_dep_writer.writerow([order,change_id,changes[1],c,x])
                     for x in dependency_index:
-                        cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,[x[1] for x in ccexs_all].index(c),[x[1] for x in ccexs_all].index(x)))
+                        #cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,[x[1] for x in ccexs_all].index(c),[x[1] for x in ccexs_all].index(x)))
+                        cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,c,x))
+                        col_dependency_graph.add_edge(x,c)
 
 
+            # op-2
             elif changes[1] == "com.google.refine.model.changes.ColumnAdditionChange":
                 #print(changes[2])
                 new_cell_index = int(changes[2]["newCellIndex"])
@@ -856,8 +884,10 @@ if __name__ == "__main__":
                 #    ##col_dep_writer.writerow([order,change_id,changes[1],c_idx,x])
                 #    #col_dep_writer.writerow([order,change_id,changes[1],new_cell_index,x])
                 for x in dependency_index:
-                    cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,[x[1] for x in ccexs_all].index(new_cell_index),[x[1] for x in ccexs_all].index(x)))
-
+                    #cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,[x[1] for x in ccexs_all].index(new_cell_index),[x[1] for x in ccexs_all].index(x)))
+                    cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,new_cell_index,x))
+                    col_dependency_graph.add_edge(x,new_cell_index)
+                
                 #if order == 36:
                 #    exit()
                 #print(all_col,col)
@@ -958,6 +988,8 @@ if __name__ == "__main__":
 
                 #for r in dataset[2]["rows"]
                 #break
+
+            # op-3
             elif changes[1] == "com.google.refine.model.changes.ColumnRemovalChange" :
                 oldColumnIndex = int(changes[2]["oldColumnIndex"])
                 oldColumn = json.loads(changes[2]["oldColumn"])
@@ -1019,7 +1051,9 @@ if __name__ == "__main__":
 
                 #print(oldColumnIndex)
                 ccexs_all.insert(oldColumnIndex,new_pos)                
-                                
+
+                cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,-2,oldColumnIndex))
+
                 #print(ccexs_all)
                 conn.commit()
                 #exit()
@@ -1054,21 +1088,29 @@ if __name__ == "__main__":
                         r["cells"].insert(oldColumnIndex,None)
                 """
                 #break
+            
+            # op-4
             elif changes[1] == "com.google.refine.model.changes.ColumnSplitChange" :
                 #print(changes[2])
                 print(dataset[2]["rows"][0]["cells"])
                 # get the cell index
                 index_col = []
                 for col_name in changes[2]["new_columns"]:
-                    index_col.append(search_cell_column_byname(dataset[0]["cols"],col_name)[1]["cellIndex"])
+                    cidx = search_cell_column_byname(dataset[0]["cols"],col_name)[1]["cellIndex"]
+                    index_col.append(cidx)
+
+
                 #print(index_col)
                 #break
                 # remove column metadata
+                ori_column = search_cell_column_byname(dataset[0]["cols"],changes[2]["columnName"])
+                
                 for ind in sorted(index_col)[::-1]:
                     icol, col = search_cell_column(dataset[0]["cols"],ind)
                     dataset[0]["cols"].pop(icol)
-
-                ori_column = search_cell_column_byname(dataset[0]["cols"],changes[2]["columnName"])
+                    print(icol,ori_column)
+                    cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,col["cellIndex"],ori_column[1]["cellIndex"]))
+                    col_dependency_graph.add_edge(ori_column[1]["cellIndex"],col["cellIndex"])
 
                 # remove cells on row data 
                 # print(changes[2]["new_cells"])
@@ -1134,6 +1176,8 @@ if __name__ == "__main__":
 
                 #exit()
                 #break
+            
+            # op-5
             elif changes[1] == "com.google.refine.model.changes.ColumnRenameChange":
                 #print(changes[2])
                 index_col = search_cell_column_byname(dataset[0]["cols"],changes[2]["oldColumnName"])[1]
@@ -1141,7 +1185,9 @@ if __name__ == "__main__":
                 index_col["name"] = changes[2]["oldColumnName"]
                 print(changes[2])
                 #exit()
-                
+                            
+                cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,index_col["cellIndex"],index_col["cellIndex"]))
+
                 """
                 prev_col_schema_id = col_schema_id-1
                 for v,(vv,vy) in enumerate(temp_ccexs):
@@ -1169,6 +1215,8 @@ if __name__ == "__main__":
                 #exit()
 
                 #break            
+
+            # op-6
             elif changes[1] == "com.google.refine.model.changes.CellChange":
                 ch = changes[2]
                 try:
@@ -1180,6 +1228,9 @@ if __name__ == "__main__":
                 c = int(ch["cell"])
                 nv = json.loads(ch["new"])
                 ov = json.loads(ch["old"])
+
+                cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,c,c))
+
                 #print(dataset[2]["rows"][r])            
                 #print(dataset[2]["rows"][r]["cells"][c],ch)
                 #print(dataset[2]["rows"][r]["cells"][c],nv)
@@ -1219,11 +1270,16 @@ if __name__ == "__main__":
                 #exit()
                 #break                    
 
+            # op-7
             elif changes[1] == "com.google.refine.model.changes.ColumnMoveChange":
                 columns = dataset[0]["cols"]
+                cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,int(changes[2]["newColumnIndex"]),int(changes[2]["oldColumnIndex"])))
+                cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,int(changes[2]["oldColumnIndex"]),int(changes[2]["newColumnIndex"])))
+
                 temp = columns[int(changes[2]["newColumnIndex"])]
                 columns[int(changes[2]["newColumnIndex"])] = columns[int(changes[2]["oldColumnIndex"])]
                 columns[int(changes[2]["oldColumnIndex"])] = temp
+
 
                 #changes[2]["oldColumnIndex"] = 7
                 #print(changes[2])
@@ -1258,6 +1314,9 @@ if __name__ == "__main__":
                 ccexs_all_c = ccexs_all.copy()
                 pop_index = int(changes[2]["newColumnIndex"])
                 new_pop = ccexs_all_c[pop_index]
+                
+                #print(new_pop)
+
                 try:
                     next_sch = ccexs_all_c[pop_index+1]                         
                 except:
@@ -1469,6 +1528,8 @@ if __name__ == "__main__":
                 break            
             
             prev_state_id=state_id
+            #if state_id==32:
+            #    exit()
             state_id+=1
         #break
         #print(dataset[0])
@@ -1488,6 +1549,19 @@ if __name__ == "__main__":
     #exit()
 
     # extract table to csv
+    #print(col_dependency_graph.edges())
+    #print([col_dependency_graph.subgraph(c).copy() for c in nx.connected_components(col_dependency_graph.to_undirected())])
+    sub_graphs = [col_dependency_graph.subgraph(c).copy() for c in nx.connected_components(col_dependency_graph.to_undirected())]
+    for xx in sub_graphs:
+        indeg = dict(xx.in_degree())
+        #print(dict(indeg))
+        to_add = [n for n in indeg if indeg[n] == 0]
+        for yy in to_add:
+            cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(-1,yy,-1))
+        #print(to_add)
+    conn.commit()
+
+
     import os
     extract_folder = ".".join(file_name.split(".")[:-2])+".extract"
     try:
@@ -1514,6 +1588,24 @@ if __name__ == "__main__":
                     # remove whitespace
                     l = l[:-1]
                     writer.write("{}({}).\n".format(x,l))
-    print("prepared datalog files: {}/facts.pl".format(extract_folder))
+
+    tables = ["array","column","column_schema","dataset","row","row_position","source","state","state_command","content","col_dependency"]
+    table_files = []
+    for table in tables:
+        print("Extract {}".format(table))
+        df = pd.read_sql_query("SELECT * from {}".format(table), conn)
+        df.to_csv("{}/{}.csv".format(extract_folder,table),sep=",",index=False,header=None,quotechar='"',escapechar="\\",doublequote=False,quoting=csv.QUOTE_NONNUMERIC)
+        table_files.append((table,"{}/{}.csv".format(extract_folder,table)))
+    print("csv extracted at: {}".format(extract_folder))
+    # prepare datalog files
+    #print("prepare datalog files: {}/facts.pl".format(extract_folder))
+    with open("{}/facts_content_excluded.pl".format(extract_folder),"w") as writer:
+        for x,y in table_files:
+            with open(y,"r") as file:
+                for l in file:
+                    # remove whitespace
+                    l = l[:-1]
+                    writer.write("{}({}).\n".format(x,l))                    
+    print("prepared datalog files: {}/facts_content_excluded.pl".format(extract_folder))
                     
     conn.close()
