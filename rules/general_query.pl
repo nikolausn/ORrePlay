@@ -1,5 +1,5 @@
-state(N) :- N=-1.
-dataset_name(N) :- N="airbnb_dirty-csv.openrefine-2.tar.gz".
+%state(N) :- N=-1.
+%dataset_name(N) :- N="airbnb_dirty-csv.openrefine-2.tar.gz".
 %state(-1,none,none).
 
 content(-1,nul,nul,nul,nul).
@@ -89,6 +89,16 @@ next_row_position_at_or_before_state(RowPositionId, StateId) :-
     NextRowPositionStateId <= StateId,
     state_num(StateId).
 
+num(N):- {node(X)} == N. % count nodes
+step(1..N) :- num(N). % mark possible steps
+
+%row_position_at_state(RowPosId, RowId, StateId) :-
+%    row_position(RowPosId, RowId, AssignmentStateId, _),
+%    next_row_position_at_or_before_state(RowPosId, StateId),
+    %StateId = #min{A:next_row_position_at_or_before_state(_,A)},
+    %not next_row_position_at_or_before_state(RowPosId, StateId),
+%    state_num(StateId).
+
 row_position_state(StateId,AssignmentStateId):-
     row_position(RowPosId, RowId, AssignmentStateId, _),
     AssignmentStateId <= StateId,
@@ -109,6 +119,8 @@ row_position_at_state_test(RowPosId, RowId, StateId,PrevRowId) :-
     row_position_at_state(RowPosId, RowId, StateId,PrevRowId),
     %row_position(RowPosId,_,_,PrevRowId),
     state(StateId).
+
+row_position_at_state(nul,-1,nul,nul).
 
 % get all import state
 import_state(SourceUri, DatasetId, ImportArrayId, ImportStateId) :-
