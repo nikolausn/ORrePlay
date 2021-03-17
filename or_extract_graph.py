@@ -360,6 +360,7 @@ def read_change(changefile):
                 break
     elif command_name == "com.google.refine.model.changes.RowReorderChange":
         line = next(changefile).replace("\n","")
+
         #print(line)
         while line:
             if line=="/ec/":
@@ -1199,9 +1200,18 @@ if __name__ == "__main__":
                         col_schema_id+=1
                         ccexs_all[pop_index+1] = new_next
                     
+
+                    # put and end for the new column
+                    cur_idx = ccexs_all[pop_index]
+                    new_next = (col_schema_id,cur_idx[1],state_id,cur_idx[3],cur_idx[4],-2,cur_idx[0])
+                    cursor.execute('''INSERT INTO column_schema VALUES
+                    (?,?,?,?,?,?,?)''',new_next)
+                    col_schema_id+=1
+
                     ccexs_all.pop([x[1] for x in ccexs_all].index(ind))      
-                    print(ccexs_all)                      
-                      
+
+                    print(ccexs_all)        
+
                 #print(ccexs_all)
                 conn.commit()
 
@@ -1297,15 +1307,14 @@ if __name__ == "__main__":
                 cursor.execute("INSERT INTO content VALUES (?,?,?,?,?)",(content_id,cex[1],state_id,value_id,cex[0]))
                 value_id+=1
                 content_id+=1
-                conn.commit()
                 #exit()
                 #break                    
 
             # op-7
             elif changes[1] == "com.google.refine.model.changes.ColumnMoveChange":
                 columns = dataset[0]["cols"]
-                cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,int(changes[2]["newColumnIndex"]),int(changes[2]["oldColumnIndex"])))
-                cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,int(changes[2]["oldColumnIndex"]),int(changes[2]["newColumnIndex"])))
+                cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,int(changes[2]["newColumnIndex"]),int(changes[2]["newColumnIndex"])))
+                cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,int(changes[2]["oldColumnIndex"]),int(changes[2]["oldColumnIndex"])))
 
                 temp = columns[int(changes[2]["newColumnIndex"])]
                 columns[int(changes[2]["newColumnIndex"])] = columns[int(changes[2]["oldColumnIndex"])]
@@ -1435,6 +1444,30 @@ if __name__ == "__main__":
 
                 #break
             elif changes[1] == "com.google.refine.model.changes.RowReorderChange":
+                columns = dataset[0]["cols"].copy()
+                col_names = [x["name"] for x in columns]
+                description = json.dumps(recipes[change_id]["operation"]["sorting"]["criteria"])
+                #print(description)
+                # find columns from description
+                col_names = sorted(col_names,key=lambda x:len(x))[::-1]
+                all_col = set()
+                for x in col_names:
+                    while description.find(x)>=0:
+                        all_col.add(x)
+                        description = description.replace(x,"")
+                set_idx = []
+                for x in all_col:
+                    cc = search_cell_column_byname(columns,x)
+                    set_idx.append(cc[1]["cellIndex"])
+                
+                for x in set_idx:
+                    cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,x,x))
+
+                #print(set_idx)
+                #print(all_col)
+                #exit()
+                # add column dependency
+
                 # create a new row set
                 new_rows = dataset[2]["rows"]
                 old_rows = np.array(new_rows)
@@ -1533,6 +1566,11 @@ if __name__ == "__main__":
                     for v,vv in enumerate(changes[2]["old_values"][i]["cells"]):                        
                         # add one row
                         cursor.execute("INSERT INTO cell VALUES (?,?,?)",(cell_id,v,row_id))
+
+                        # add to col dependency only for the first time
+                        if i == 0:
+                            cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,int(v),int(v)))
+
                         try:
                             val = vv["v"]
                         except:

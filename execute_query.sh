@@ -10,6 +10,32 @@ clingo 03_poster_demo.openrefine.extract/facts.pl rules/column_query.pl  temp_ru
 
 echo
 
+echo "State Lineage ?"
+cat <<EOT > temp_runner.pl
+state(N) :- N=$state.
+%state_lineage_remove_dup(StateId,MaxLevel,Mediator,CommonAncestor):-
+%    state_lineage(StateId,_,Mediator,CommonAncestor),
+%    MaxLevel = #max{N:state_lineage(StateId,N,_,CommonAncestor)}.
+
+state_lineage_remove_dup(StateId,MaxLevel,CommonAncestor):-
+    state_lineage(StateId,_,_,CommonAncestor),
+    MaxLevel = #max{N:state_lineage(StateId,N,_,CommonAncestor)}.
+
+%state_lineage_test(StateId,Level,Mediator,CommonAncestor):-
+%    state_lineage_remove_dup(StateId,Level,Mediator,CommonAncestor),    
+%    %StateId<CommonAncestor.
+%    state(StateId).
+
+state_lineage_test(StateId,Level,CommonAncestor):-
+    state_lineage_remove_dup(StateId,Level,CommonAncestor),    
+%    %StateId<CommonAncestor.
+    state(StateId).
+#show state_lineage_test/3.
+EOT
+clingo ipaw_2021_demo.openrefine.3.extract/facts.pl rules/column_query.pl  temp_runner.pl
+#clingo airbnb_dirty-csv.openrefine-2.extract/facts.pl rules/column_query.pl  temp_runner.pl
+
+
 echo "What are the sequence of transformation executed on the dataset ?"
 cat <<EOT > temp_runner.pl
 state(N) :- N=$state.

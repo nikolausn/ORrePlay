@@ -1,6 +1,7 @@
 %state(N) :- N=-1.
 %dataset_name(N) :- N="airbnb_dirty-csv.openrefine-2.tar.gz".
-%state(-1,none,none).
+state(-1,none,none).
+%#show all_column_name_at_state_test/5.
 
 content(-1,nul,nul,nul,nul).
 
@@ -19,7 +20,7 @@ change_content_at_state_test(ContentId,CellId) :-
 change_content_at_state(ContentId,CellId,StateId),
 state(StateId).
 
-#show change_content_at_state_test/2.
+%#show change_content_at_state_test/2.
 
 change_count_at_before_state(B) :- content(A,B,N,_,_),
     state(N).
@@ -89,8 +90,8 @@ next_row_position_at_or_before_state(RowPositionId, StateId) :-
     NextRowPositionStateId <= StateId,
     state_num(StateId).
 
-num(N):- {node(X)} == N. % count nodes
-step(1..N) :- num(N). % mark possible steps
+%num(N):- {node(X)} == N. % count nodes
+%step(1..N) :- num(N). % mark possible steps
 
 %row_position_at_state(RowPosId, RowId, StateId) :-
 %    row_position(RowPosId, RowId, AssignmentStateId, _),
@@ -119,6 +120,7 @@ row_position_at_state_test(RowPosId, RowId, StateId,PrevRowId) :-
     row_position_at_state(RowPosId, RowId, StateId,PrevRowId),
     %row_position(RowPosId,_,_,PrevRowId),
     state(StateId).
+    
 
 row_position_at_state(nul,-1,nul,nul).
 
