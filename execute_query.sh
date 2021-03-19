@@ -5,10 +5,51 @@ cat <<EOT > temp_runner.pl
 state(N) :- N=$state.
 #show q1/1.
 EOT
-clingo 03_poster_demo.openrefine.extract/facts.pl rules/column_query.pl  temp_runner.pl
+#clingo 03_poster_demo.openrefine.extract/facts.pl rules/column_query.pl  temp_runner.pl
 #clingo airbnb_dirty-csv.openrefine-2.extract/facts.pl rules/column_query.pl  temp_runner.pl
 
 echo
+
+echo "Column Order ?"
+cat <<EOT > temp_runner.pl
+state(N) :- N=0.
+% all column at before state
+all_column_schema_at_before_state(PrevColSchemaId, StateId) :-
+    column_schema(ColumnSchemaId, _, NextColumnSchemaStateId, _, _, _, PrevColSchemaId),
+    NextColumnSchemaStateId <= StateId,
+    %StateId=#max{A: state(A, _, _)}.
+    state_num(StateId).
+
+state_num(-1..M):- M=#max{A: state(A, _, _)}.
+
+all_column_schema_at_state(ColumnSchemaId, ColumnId, StateId) :-
+    column_schema(ColumnSchemaId, ColumnId, AssignmentStateId, _, _, _, _),
+    StateId >= AssignmentStateId,
+    not all_column_schema_at_before_state(ColumnSchemaId, StateId),
+    %StateId=-1..M,
+    %M=#max{A: state(A, _, _)}.
+    state_num(StateId).
+
+column_schema_at_state(ColumnSchemaId,StateId,ColumnId,ColumnName,PrevColumnId):-
+    all_column_schema_at_state(ColumnSchemaId, ColumnId, StateId),
+    column_schema(ColumnSchemaId,ColumnId,_,_,ColumnName,PrevColumnId,_),
+    state(StateId).
+
+column_lineage(StateId,0,ColumnId,-1):-
+    column_schema_at_state(_,StateId,ColumnId,_,-1).
+column_lineage(StateId,Level+1,ColumnId,ParentColumnId):-
+    column_lineage(StateId,Level,ParentColumnId,_),
+    column_schema_at_state(_,StateId,ColumnId,_,ParentColumnId),
+    Level<10,
+    state_num(StateId). 
+
+#show column_schema_at_state/5.
+#show column_lineage/4.
+EOT
+clingo ipaw_2021_demo.openrefine.3.extract/facts.pl  temp_runner.pl
+#clingo airbnb_dirty-csv.openrefine-2.extract/facts.pl rules/column_query.pl  temp_runner.pl
+
+
 
 echo "State Lineage ?"
 cat <<EOT > temp_runner.pl

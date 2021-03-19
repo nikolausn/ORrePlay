@@ -567,7 +567,7 @@ if __name__ == "__main__":
 
     # row_position
     cursor.execute('''CREATE TABLE IF NOT EXISTS row_position
-                (row_pos_id integer, row_id integer, state_id integer, prev_row_id integer)''')
+                (row_pos_id integer, row_id integer, state_id integer, prev_row_id integer, prev_row_pos_id integer)''')
     row_pos_id = 0
 
     cursor.execute("INSERT INTO source VALUES (?,?,?)",(source_id,file_name,"OpenRefine Project File"))
@@ -690,7 +690,7 @@ if __name__ == "__main__":
         #cursor.execute('''INSERT INTO row_position VALUES
         #    (?,?,?,?)''',(row_pos_id,row_id,state_id,prev_row_id))
         cursor.execute('''INSERT INTO row_position VALUES
-            (?,?,?,?)''',(row_pos_id,row_id,-1,prev_row_id))
+            (?,?,?,?,?)''',(row_pos_id,row_id,-1,prev_row_id,-1))
         prev_row_id=row_id
         row_id+=1
         row_pos_id+=1        
@@ -703,8 +703,8 @@ if __name__ == "__main__":
     ccexs_all = list(cursor.execute("SELECT * from column_schema  where state_id=? order by col_schema_id asc",(str(cc_ids),)))
 
     rcexs_all = list(cursor.execute("SELECT * from row_position  where state_id=? order by row_pos_id asc",(str(cc_ids),)))
-    rcexs = list(cursor.execute("SELECT row_id from row_position  where state_id=? order by row_pos_id asc",(str(cc_ids),)))
-    rcexs = [x[0] for x in rcexs]
+    rcexs = list(cursor.execute("SELECT row_id,row_pos_id from row_position  where state_id=? order by row_pos_id asc",(str(cc_ids),)))
+    rcexs = [(x[0],x[1]) for x in rcexs]
 
     for order,(change_id, change) in enumerate([(x["id"],str(x["id"])+".change.zip") for x in dataset[1]["hists"][::-1]]):
         #print(change)
@@ -796,7 +796,7 @@ if __name__ == "__main__":
 
                         #print(rcexs.index(r))
                         try:
-                            cex = cursor.execute("SELECT content_id,cell_id FROM (SELECT a.content_id,a.cell_id,a.state_id FROM content a,cell b where a.cell_id=b.cell_id and b.col_id=? and b.row_id=?) order by state_id desc limit 1",(c,rcexs[r]))
+                            cex = cursor.execute("SELECT content_id,cell_id FROM (SELECT a.content_id,a.cell_id,a.state_id FROM content a,cell b where a.cell_id=b.cell_id and b.col_id=? and b.row_id=?) order by state_id desc limit 1",(c,rcexs[r][0]))
                             #cex = cursor.execute("SELECT content_id,cell_id FROM (SELECT a.content_id,a.cell_id,a.state_id FROM content a,cell b where a.cell_id=b.cell_id and b.col_id=? and b.row_id=?) order by state_id desc limit 1",(c,rcexs[r]))
                             #cex = cursor.execute("SELECT content_id,cell_id FROM (SELECT a.content_id,a.cell_id,a.state_id FROM content a,cell b where a.cell_id=b.cell_id and b.col_id=? and b.row_id=?) order by state_id desc limit 1",(c,r))
                         except BaseException as ex:
@@ -1285,7 +1285,7 @@ if __name__ == "__main__":
                     #cell_writer.writerow([order,change_id,changes[1],c,r,nv,ov,c,r])
 
                 try:
-                    cex = cursor.execute("SELECT content_id,cell_id FROM (SELECT a.content_id,a.cell_id,a.state_id FROM content a,cell b where a.cell_id=b.cell_id and b.col_id=? and b.row_id=?) order by state_id desc limit 1",(c,rcexs[r]))
+                    cex = cursor.execute("SELECT content_id,cell_id FROM (SELECT a.content_id,a.cell_id,a.state_id FROM content a,cell b where a.cell_id=b.cell_id and b.col_id=? and b.row_id=?) order by state_id desc limit 1",(c,rcexs[r][0]))
                 except BaseException as ex:
                     print(dataset[2]["rows"][r]["cells"])
                     print(ccexs,c,len(ccexs),len(dataset[2]["rows"][r]["cells"]))
@@ -1460,8 +1460,8 @@ if __name__ == "__main__":
                     cc = search_cell_column_byname(columns,x)
                     set_idx.append(cc[1]["cellIndex"])
                 
-                for x in set_idx:
-                    cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,x,x))
+                #for x in set_idx:
+                #    cursor.execute("INSERT INTO col_dependency VALUES (?,?,?)",(state_id,x,x))
 
                 #print(set_idx)
                 #print(all_col)
@@ -1472,6 +1472,8 @@ if __name__ == "__main__":
                 new_rows = dataset[2]["rows"]
                 old_rows = np.array(new_rows)
                 #print(len(rcexs))
+
+                """
                 for i,li in enumerate(changes[2]["row_order"]):
                     old_rows[li] = new_rows[i]
                     #row_writer.writerow([order,change_id,changes[1],li,i])
@@ -1486,14 +1488,46 @@ if __name__ == "__main__":
                     #rcexs[li] = rcexs[i]
                     #rcexs[i] = temp_rid
                     row_pos_id+=1
+                """
+
+                rcexs_cp = rcexs.copy()
+                for i,li in enumerate(changes[2]["row_order"]):
+                    old_rows[li] = new_rows[i]
+                    #row_writer.writerow([order,change_id,changes[1],li,i])
+                    if i == 0:
+                        prev_vv = -1
+                    #print(li)
+                    temp_rid = rcexs[i]
+                    if rcexs_cp[li][0] != rcexs[i][0]:
+                        rcexs_cp[li] = (temp_rid[0],row_pos_id)
+                        #temp_rid = rcexs_all[li]
+                        #cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(row_pos_id,temp_rid[0],state_id,int(prev_vv),temp_rid[1]))
+
+                        #rcexs[li] = rcexs[i]
+                        #rcexs[i] = temp_rid
+                        row_pos_id+=1
+                    prev_vv = temp_rid[0]
                 
+                for i,li in enumerate(changes[2]["row_order"]):
+                    if i == 0:
+                        prev_vv = -1
+                    temp_rid = rcexs_cp[i]
+                    if rcexs_cp[i][0] != rcexs[i][0]:
+                        cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(temp_rid[1],temp_rid[0],state_id,int(prev_vv),rcexs[li][1]))
+                    prev_vv = temp_rid[0]
+
+                #print(rcexs_cp)
+                #exit()
+                """
                 rcexs_cp = rcexs.copy()
                 for i,li in enumerate(changes[2]["row_order"]):
                     #temp_tt = rcexs[li]
                     rcexs_cp[li] = rcexs[i]
                     #rcexs[i] = temp_tt
                 rcexs = rcexs_cp
-                print(rcexs[:100])                    
+                print(rcexs[:100])
+                """
+
                 # new patch
                 #rcexs_all = old_rows
 
@@ -1588,16 +1622,59 @@ if __name__ == "__main__":
                     #exit()
                     
                 conn.commit()                
-
+                
+                rcexs_cp = rcexs.copy()
+                #print(temp_rows)
+                #print(rcexs)
                 for v,vv in enumerate(temp_rows):
                     if v==0:
                         prev_vv = -1
 
-                    cursor.execute("INSERT INTO row_position VALUES (?,?,?,?)",(row_pos_id,vv,state_id,int(prev_vv)))
+                    #cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(row_pos_id,vv,state_id,int(prev_vv),-1))
                     prev_vv = vv
-                    row_pos_id+=1
                     #patch
-                    rcexs.insert(v,vv)
+                    try:
+                        if rcexs_cp[v][0] != rcexs[vv][0]:                    
+                            rcexs.insert(v,(vv,row_pos_id))
+                            row_pos_id+=1
+                    except:
+                        rcexs.insert(v,(vv,row_pos_id))
+                        row_pos_id+=1
+
+                rcexs = rcexs[:len(temp_rows)]
+                print(rcexs)
+                #exit()
+                rewrite = False
+
+                for v,vv in enumerate(temp_rows):
+                    #print(v,vv)
+                    if v==0:
+                        prev_vv = -1
+
+                    temp_rid = rcexs[v]
+                    #print(temp_rid)
+                    #print(prev_vv)
+                    if rewrite:
+                        cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(temp_rid[1],temp_rid[0],state_id,int(prev_vv),rcexs_cp[vv][1]))
+                        prev_vv = temp_rid[0]
+                        #row_pos_id+=1
+                    try:
+                        #print(v,vv)
+                        if rcexs_cp[v][0] != rcexs[v][0]:
+                            #rcexs_cp[vv] = (temp_rid[v],row_pos_id)
+                        
+                            cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(temp_rid[1],temp_rid[0],state_id,int(prev_vv),-1))
+                            prev_vv = temp_rid[0]
+                            rewrite = True
+                            #rcexs[li] = rcexs[i]
+                            #rcexs[i] = temp_rid
+                            #row_pos_id+=1
+                    except:
+                        pass
+                    prev_vv = temp_rid[0]
+                
+                #exit()
+                    
                 conn.commit()
                 print(rcexs[:100])
                 #exit()
