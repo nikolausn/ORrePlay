@@ -1498,7 +1498,7 @@ if __name__ == "__main__":
                         prev_vv = -1
                     #print(li)
                     temp_rid = rcexs[i]
-                    if rcexs_cp[li][0] != rcexs[i][0]:
+                    if rcexs_cp[li] != rcexs[i]:
                         rcexs_cp[li] = (temp_rid[0],row_pos_id)
                         #temp_rid = rcexs_all[li]
                         #cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(row_pos_id,temp_rid[0],state_id,int(prev_vv),temp_rid[1]))
@@ -1512,9 +1512,11 @@ if __name__ == "__main__":
                     if i == 0:
                         prev_vv = -1
                     temp_rid = rcexs_cp[i]
-                    if rcexs_cp[i][0] != rcexs[i][0]:
-                        cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(temp_rid[1],temp_rid[0],state_id,int(prev_vv),rcexs[li][1]))
+                    if rcexs_cp[i] != rcexs[i]:
+                        cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(temp_rid[1],temp_rid[0],state_id,int(prev_vv),rcexs[i][1]))
                     prev_vv = temp_rid[0]
+
+                rcexs = rcexs_cp
 
                 #print(rcexs_cp)
                 #exit()
@@ -1634,7 +1636,7 @@ if __name__ == "__main__":
                     prev_vv = vv
                     #patch
                     try:
-                        if rcexs_cp[v][0] != rcexs[vv][0]:                    
+                        if rcexs_cp[v] != rcexs[vv]:
                             rcexs.insert(v,(vv,row_pos_id))
                             row_pos_id+=1
                     except:
@@ -1642,10 +1644,41 @@ if __name__ == "__main__":
                         row_pos_id+=1
 
                 rcexs = rcexs[:len(temp_rows)]
-                print(rcexs)
+                #print(rcexs)
                 #exit()
-                rewrite = False
+                #rewrite = False
 
+                # old row_order
+                old_row_dict = {}
+                for i,x in enumerate(rcexs_cp):
+                    if i == 0:
+                        prev = -1
+                    else:
+                        prev = rcexs_cp[i-1][0]
+                    old_row_dict[x[0]] = prev
+
+                new_row_dict = {}
+                for i,x in enumerate(rcexs):
+                    if i == 0:
+                        prev = -1
+                    else:
+                        prev = rcexs[i-1][0]
+                    new_row_dict[x[0]] = prev                    
+                
+                print(old_row_dict,new_row_dict)
+                #exit()
+
+                for key,val in new_row_dict.items():
+                    if key not in old_row_dict.keys():
+                        cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(rcexs[key][1],key,state_id,val,-1))
+                    elif val!=old_row_dict[key]:
+                        cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(rcexs[key][1],key,state_id,val,rcexs_cp[key][1]))
+                
+                #exit()
+
+                #{[for i,x in enumerate(rcexs_cp)]}
+                
+                """
                 for v,vv in enumerate(temp_rows):
                     #print(v,vv)
                     if v==0:
@@ -1660,7 +1693,7 @@ if __name__ == "__main__":
                         #row_pos_id+=1
                     try:
                         #print(v,vv)
-                        if rcexs_cp[v][0] != rcexs[v][0]:
+                        if rcexs_cp[v] != rcexs[v]:
                             #rcexs_cp[vv] = (temp_rid[v],row_pos_id)
                         
                             cursor.execute("INSERT INTO row_position VALUES (?,?,?,?,?)",(temp_rid[1],temp_rid[0],state_id,int(prev_vv),-1))
@@ -1672,11 +1705,11 @@ if __name__ == "__main__":
                     except:
                         pass
                     prev_vv = temp_rid[0]
-                
+                """
                 #exit()
                     
                 conn.commit()
-                print(rcexs[:100])
+                #print(rcexs[:100])
                 #exit()
                 #for i,idx in 
                 #row_riter.writerow([order,change_id,ori_column[1]["cellIndex"],ind])
